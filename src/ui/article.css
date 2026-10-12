@@ -1,0 +1,38 @@
+/* Стили статьи внутри Shadow DOM каждой карточки. Переменные темы (--text, --accent …) наследуются снаружи. */
+:host{display:block}
+.art{overflow-wrap:anywhere}
+.art img{max-width:100%;height:auto}
+.art .entry+.entry{border-top:1px dashed var(--line);margin-top:18px;padding-top:16px}
+.art a[data-w],.art a.ref{color:var(--accent);text-decoration:none;border-bottom:1px dotted var(--accent);cursor:pointer}
+.art [data-snd],.art .snd{cursor:pointer}
+
+/* словарь со своим CSS рассчитан на светлый фон: в тёмной теме инвертируем всю карточку (см. style.css) */
+.art.dict{color:#222;background:transparent}
+.art.dict img,.art.dict video,.art.dict svg{filter:var(--imgfilter,none)}
+
+/* оформление DSL, StarDict и прочего без собственного CSS */
+.art:not(.dict) p,.art:not(.dict) .m{margin:.35em 0}
+.art:not(.dict) .m1{margin-left:0}.art:not(.dict) .m2{margin-left:1.2em}.art:not(.dict) .m3{margin-left:2.4em}.art:not(.dict) .m4{margin-left:3.6em}
+.art:not(.dict) .m0{margin-left:0}.art:not(.dict) .m6{color:var(--muted)}.art:not(.dict) .m8{text-align:center;color:var(--muted)}
+.art:not(.dict) .p{color:var(--c-green);font-style:italic;font-size:.88em;font-family:system-ui,sans-serif}
+.art:not(.dict) .com{color:var(--c-dim);font-style:italic}
+.art:not(.dict) .ex{color:var(--text)}
+.art:not(.dict) .lang{font-style:normal}
+.art:not(.dict) .tr{color:var(--c-violet)}
+.art:not(.dict) .st{text-decoration:none;color:var(--c-red);font-weight:700}
+.art:not(.dict) .opt{color:var(--muted)}
+.art:not(.dict) table{border-collapse:collapse}
+.art:not(.dict) td,.art:not(.dict) th{padding:2px 8px;vertical-align:top}
+.art:not(.dict) .c-red{color:var(--c-red)}
+.art:not(.dict) .c-gray,.art:not(.dict) .c-darkgray,.art:not(.dict) .c-grey{color:var(--c-gray)}
+.art:not(.dict) .c-green,.art:not(.dict) .c-darkgreen{color:var(--c-green)}
+.art:not(.dict) .c-blue,.art:not(.dict) .c-darkblue{color:var(--c-blue)}
+.art:not(.dict) .c-brown{color:var(--c-brown)}
+.art:not(.dict) .c-violet,.art:not(.dict) .c-purple{color:var(--c-violet)}
+.art:not(.dict) .c-darkslategray,.art:not(.dict) .c-slategray,.art:not(.dict) .c-dimgray{color:var(--c-dim)}
+
+/* мелкие значки (транскрипция в Трезоре) — тёмные на белом; в тёмной теме их инвертируем */
+.art:not(.dict) img.glyph{filter:var(--glyphfilter,none);vertical-align:middle}
+
+/* подсветка найденного при поиске по тексту (внутри Shadow DOM стиль нужен и здесь) */
+::highlight(ft){background-color:rgba(255,196,0,.5);color:inherit}

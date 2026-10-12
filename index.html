@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Словарь</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232f5bea'/%3E%3Ctext x='16' y='23' font-size='20' text-anchor='middle' fill='white' font-family='sans-serif'%3E%D0%A1%3C/text%3E%3C/svg%3E">
+<script>
+  // тема и вид до отрисовки, чтобы не мигало
+  try {
+    const t = localStorage.getItem('theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    document.documentElement.dataset.theme = t;
+    if (localStorage.getItem('style') === 'soft') document.documentElement.dataset.style = 'soft';
+  } catch (e) {}
+</script>
+</head>
+<body>
+<aside>
+  <div class="brand"><i>С</i> Словарь</div>
+  <div id="dictlist"></div>
+  <div class="status" id="status"></div>
+  <div class="side-foot">
+    <button class="chip" id="theme">◐ Тема</button>
+    <button class="chip" id="style">▦ Вид</button>
+    <button class="chip" id="fsm" title="Меньше">A−</button>
+    <button class="chip" id="fsp" title="Больше">A+</button>
+    <button class="chip" id="folder" title="Выбрать другую папку со словарями">📁 Папка</button>
+    <button class="chip" id="diag" title="Время загрузки, память, кэш, проблемные словари">🩺 Диагностика</button>
+  </div>
+</aside>
+<div id="resizer" role="separator" aria-orientation="vertical" tabindex="0" title="Потяните, чтобы изменить ширину панели. Двойной щелчок — вернуть как было"></div>
+<main>
+  <div class="search">
+    <div class="sbox">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <input id="q" autocomplete="off" spellcheck="false" placeholder="Слово…" disabled>
+      <button type="button" id="modeAll" class="mode sub" hidden title="Фраза: слова рядом, как написано. Все слова: слова в любом порядке в одной статье (точную фразу заключите в «кавычки»)">Фраза</button>
+      <button type="button" id="mode" class="mode" title="Переключить: поиск слов / поиск по тексту статей (быстро: Shift+Enter)">Слова</button>
+      <kbd>/</kbd>
+    </div>
+    <div class="sug" id="sug"></div>
+  </div>
+  <div class="scope" id="scope"></div>
+  <div class="recent" id="recent"></div>
+  <div id="out"></div>
+</main>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>
