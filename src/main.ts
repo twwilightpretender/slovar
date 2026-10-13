@@ -788,6 +788,11 @@ $('#fsm').onclick = () => setFs(fs - 2);
 $('#fsp').onclick = () => setFs(fs + 2);
 setFs(fs);
 
+// служба кэширования только в собранной версии (в разработке мешает перезагрузке)
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+
 renderRecent();
 start();
 (window as unknown as { __dbg: object }).__dbg = { show, call, get state() { return { sources, status, enabled, ready }; } };
