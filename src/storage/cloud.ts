@@ -26,6 +26,7 @@ export interface Progress {
   file: string;
   fileNo: number;
   files: number;
+  note?: string; // что сейчас не получается (повторная попытка), чтобы окно не казалось зависшим
 }
 interface Manifest {
   link: string;
@@ -64,7 +65,7 @@ export const hasBuiltinGoogleKey = !!GOOGLE_KEY;
 
 /* ---------- список файлов ---------- */
 async function apiJson(url: string, signal?: AbortSignal): Promise<any> {
-  const r = await fetch(url, { signal });
+  const r = await fetch(url, { signal, referrerPolicy: 'no-referrer' }); // Яндекс отвечает 403 на запросы с Referer сайта github.io
   if (r.status === 404) throw new Error('Ссылка не найдена. Проверьте, что доступ по ссылке включён.');
   if (r.status === 429) throw new Error('Яндекс.Диск просит подождать (слишком много запросов). Повторите через минуту.');
   if (!r.ok) throw new Error('Яндекс.Диск ответил ошибкой ' + r.status);
@@ -72,7 +73,7 @@ async function apiJson(url: string, signal?: AbortSignal): Promise<any> {
 }
 
 async function gJson(url: string, signal?: AbortSignal): Promise<any> {
-  const r = await fetch(url, { signal });
+  const r = await fetch(url, { signal, referrerPolicy: 'no-referrer' });
   if (r.ok) return r.json();
   let reason = '';
   try { reason = (await r.json())?.error?.errors?.[0]?.reason ?? ''; } catch { /* без тела */ }
@@ -179,7 +180,7 @@ async function downloadHref(link: string, item: CloudItem, signal?: AbortSignal)
 /** Скачивает файл в OPFS потоком; при обрыве докачивает с места остановки (Range). */
 async function fetchToFile(
   link: string, item: CloudItem, dir: FileSystemDirectoryHandle, stored: string,
-  onBytes: (n: number) => void, signal?: AbortSignal,
+  onBytes: (n: number) => void, onNote: (msg: string) => void, signal?: AbortSignal,
 ): Promise<void> {
   const w = await (await dir.getFileHandle(stored, { create: true })).createWritable();
   let written = 0;
@@ -195,7 +196,8 @@ async function fetchToFile(
       try {
         const href = await downloadHref(link, item, att.signal);
         bump();
-        const res = await fetch(href, written ? { headers: { Range: `bytes=${written}-` }, signal: att.signal } : { signal: att.signal });
+        // без Referer: Яндекс отдаёт 403 (а браузер показывает это как ошибку CORS), если запрос идёт с адреса github.io
+        const res = await fetch(href, written ? { headers: { Range: `bytes=${written}-` }, signal: att.signal, referrerPolicy: 'no-referrer' } : { signal: att.signal, referrerPolicy: 'no-referrer' });
         bump();
         if (written && res.status !== 206) { // сервер не умеет докачку: начинаем файл заново
           await w.truncate(0);
@@ -229,6 +231,7 @@ async function fetchToFile(
       } catch (e) {
         if (signal?.aborted) throw e;
         if (attempt >= 4) throw e;
+        onNote(`${item.path.slice(item.path.lastIndexOf('/') + 1)}: ${att.signal.aborted ? 'нет ответа' : (e as Error).message || 'ошибка сети'}, повтор ${attempt + 1} из 4`);
         await sleep(1500 * Math.min(attempt + 1, 4));
       } finally {
         clearTimeout(timer);
@@ -271,9 +274,10 @@ export async function syncCloud(
   const total = plan.bytes;
   const files = queue.length;
   let last = 0;
+  let note = '';
   const report = (file: string, force = false) => {
     const now = performance.now();
-    if (force || now - last > 120) { last = now; onProgress({ done, total, file, fileNo, files }); }
+    if (force || now - last > 120) { last = now; onProgress({ done, total, file, fileNo, files, note }); }
   };
   await navigator.storage.persist?.().catch(() => false); // просим не вытеснять скачанное
   const failed: { path: string; message: string }[] = [];
@@ -283,7 +287,7 @@ export async function syncCloud(
       const prev = m.items[it.path];
       const stored = storedName(it.path, (prev ? parseInt(prev.stored.split('_')[1], 10) + 1 : 0));
       try {
-        await fetchToFile(link, it, dir, stored, (n) => { done += n; report(it.path); }, signal);
+        await fetchToFile(link, it, dir, stored, (n) => { done += n; note = ''; report(it.path); }, (msg) => { note = msg; report(it.path, true); }, signal);
       } catch (e) {
         if (signal?.aborted) throw e;
         // один недоступный файл не должен останавливать остальные

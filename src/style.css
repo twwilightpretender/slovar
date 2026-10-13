@@ -131,7 +131,7 @@ main{padding:34px clamp(18px,4vw,60px) 80px;max-width:var(--main-w,1000px);width
 .linkin{width:min(520px,100%);padding:11px 14px;border:1px solid var(--line);border-radius:var(--rs);background:var(--panel2);color:var(--text);font-size:15px;margin-top:10px}
 .bar{height:10px;border-radius:6px;background:var(--panel2);border:1px solid var(--line);overflow:hidden;margin:14px auto 6px;width:min(520px,100%)}
 .bar i{display:block;height:100%;background:var(--accent);width:0;transition:width .15s linear}
-.cfile{font-size:13px;word-break:break-all}
+.cfile{font-size:13px;word-break:break-all;white-space:pre-line}
 .cerr{color:#c0392b !important;font-weight:600}
 .devbox{margin-top:26px;padding-top:16px;border-top:1px dashed var(--line);font-size:13px}
 .body img{max-width:100%}

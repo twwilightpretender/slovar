@@ -441,11 +441,12 @@ async function openCloud(link: string) {
       cloudScreen(`Не хватает места в браузере: нужно ${mb(plan.bytes)}, свободно ${mb(Math.max(0, est.quota - est.usage))}.`);
       return;
     }
-    prog.innerHTML = `<p>Нужно скачать: ${plan.todo.length} файл(ов), ${mb(plan.bytes)}</p><div class="bar"><i id="cbar"></i></div><p id="ctxt" class="cfile"></p>`;
+    prog.innerHTML = `<p>Нужно скачать: ${plan.todo.length} файл(ов), ${mb(plan.bytes)}</p><div class="bar"><i id="cbar"></i></div><p id="ctxt" class="cfile">Подключаюсь к облаку…</p>`;
     try {
       failed = await syncCloud(link, remote, (p) => {
         $('#cbar').style.width = (p.total ? Math.min(100, (p.done / p.total) * 100) : 100).toFixed(1) + '%';
-        $('#ctxt').textContent = `${mb(p.done)} из ${mb(p.total)} · готово файлов: ${p.fileNo} из ${p.files} · ${p.file.slice(p.file.lastIndexOf('/') + 1)}`;
+        $('#ctxt').textContent = `${mb(p.done)} из ${mb(p.total)} · готово файлов: ${p.fileNo} из ${p.files} · ${p.file.slice(p.file.lastIndexOf('/') + 1)}` + (p.note ? `
+⚠ ${p.note}` : '');
       }, signal);
     } catch (e) {
       if (signal.aborted) { if (await fromCache('Обновление отменено.')) return; cloudScreen(); return; }
