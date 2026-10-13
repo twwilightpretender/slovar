@@ -68,7 +68,19 @@ const COLORS = ['--d1', '--d2', '--d3', '--d4', '--d5', '--d6', '--d7', '--d8'];
 const color = (i: number) => `var(${COLORS[i % COLORS.length]})`;
 const FMT: Record<string, string> = { mdx: 'MDict', dsl: 'DSL', stardict: 'StarDict', slob: 'Slob', bgl: 'BGL', gls: 'GLS' };
 
+/** Название, заданное пользователем в списке слева (id словаря → название). */
+const names: Record<string, string> = (() => { try { return JSON.parse(store.get('dnames', '{}')); } catch { return {}; } })();
+/** Скрытые словари (id → название на момент скрытия): не загружаются вовсе, возвращаются из «Дубли и скрытые». */
+const hidden: Record<string, string> = (() => { try { return JSON.parse(store.get('dhidden', '{}')); } catch { return {}; } })();
+/** Группы словарей, которые пользователь отметил как «не дубли» (ключ — отсортированные id через |). */
+const notDup = new Set<string>((() => { try { return JSON.parse(store.get('notdup', '[]')); } catch { return []; } })());
+let editingId = '', editValue = ''; // переименование строки списка на месте
+
 function dictName(i: number): string {
+  return names[sources[i].id] || origName(i);
+}
+/** Название из самого словаря (или из имени файла). */
+function origName(i: number): string {
   const s = status[i];
   const base = sources[i].main.name.replace(/\.(mdx|dsl(\.dz)?|ifo|slob|bgl|gls)$/i, '');
   const raw = s?.s === 'ready' ? s.title : '';
@@ -108,7 +120,7 @@ async function ingest(entries: Entry[], label: string) {
   lastEntries = entries;
   lastLabel = label;
   folderName = label;
-  sources = groupSources(entries);
+  sources = groupSources(entries).filter((x) => !hidden[x.id]);
   status = sources.map(() => ({ s: 'queued' }) as DictStatus);
   enabled = sources.map((s) => !off.has(s.id));
   ready = false;
@@ -159,7 +171,7 @@ function dictRow(i: number): string {
   if (st.s === 'error') { sub = `<span class="err">${esc(st.reason)}</span>`; cls = ' skip'; }
   const has = have.has(i) ? ' has' : '';
   const tip = have.size ? (have.has(i) ? 'Перейти к статье в этом словаре' : 'В этом словаре нет статьи для текущего слова') : 'Перетащите, чтобы переставить';
-  return `<div class="dict${enabled[i] && !cls ? '' : ' off'}${cls}${has}" draggable="true" data-id="${esc(s.id)}" data-i="${i}" title="${tip}"><span class="dot" style="background:${color(i)}"></span><span class="nm">${esc(dictName(i))}<small>${sub}</small>${bar}</span><label class="sw" title="Включить или выключить словарь"><input type="checkbox" data-i="${i}" ${enabled[i] ? 'checked' : ''}><span></span></label></div>`;
+  return `<div class="dict${enabled[i] && !cls ? '' : ' off'}${cls}${has}" draggable="${editingId === s.id ? 'false' : 'true'}" data-id="${esc(s.id)}" data-i="${i}" title="${tip}"><span class="dot" style="background:${color(i)}"></span><span class="nm">${editingId === s.id ? `<input class="rename" value="${esc(editValue)}" maxlength="80" spellcheck="false" aria-label="Название словаря">` : esc(dictName(i))}<small>${sub}</small>${bar}</span><button type="button" class="pen" data-pen="${i}" title="Переименовать" aria-label="Переименовать словарь">✎</button><label class="sw" title="Включить или выключить словарь"><input type="checkbox" data-i="${i}" ${enabled[i] ? 'checked' : ''}><span></span></label></div>`;
 }
 
 function renderDicts() {
@@ -806,6 +818,7 @@ document.addEventListener('click', (e) => {
   }
 });
 $('#dictlist').addEventListener('change', (e) => {
+  if (!(e.target as HTMLElement).matches('.sw input')) return;
   const i = +(e.target as HTMLInputElement).dataset.i!;
   enabled[i] = (e.target as HTMLInputElement).checked;
   if (enabled[i]) off.delete(sources[i].id); else off.add(sources[i].id);
@@ -813,6 +826,105 @@ $('#dictlist').addEventListener('change', (e) => {
   renderDicts();
   if (q.value.trim()) renderSug();
 });
+
+/* ---------- переименование словарей в списке ---------- */
+function startRename(id: string) {
+  const i = sources.findIndex((x) => x.id === id);
+  if (i < 0) return;
+  editingId = id;
+  editValue = dictName(i);
+  renderDicts();
+  const inp = $('#dictlist').querySelector<HTMLInputElement>('.rename');
+  inp?.focus();
+  inp?.select();
+}
+function commitRename(save: boolean) {
+  if (!editingId) return;
+  const id = editingId;
+  editingId = '';
+  const i = sources.findIndex((x) => x.id === id);
+  if (save && i >= 0) {
+    const v = editValue.trim().replace(/\s+/g, ' ');
+    if (v && v !== origName(i)) names[id] = v; else delete names[id]; // пусто или как в словаре: вернуть исходное
+    store.set('dnames', JSON.stringify(names));
+    // уже открытая статья: обновить заголовок карточки
+    const card = out.querySelector<HTMLElement>(`.card .body[data-dict="${i}"]`)?.closest('.card');
+    const b = card?.querySelector('header b');
+    if (b) b.textContent = dictName(i);
+  }
+  renderDicts();
+}
+$('#dictlist').addEventListener('input', (e) => { const t = e.target as HTMLInputElement; if (t.matches('.rename')) editValue = t.value; });
+$('#dictlist').addEventListener('keydown', (e) => {
+  const t = e.target as HTMLElement;
+  if (!t.matches('.rename')) return;
+  if (e.key === 'Enter') { e.preventDefault(); commitRename(true); }
+  else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); commitRename(false); }
+});
+$('#dictlist').addEventListener('focusout', (e) => { if ((e.target as HTMLElement).matches('.rename')) commitRename(true); });
+
+/* ---------- дубли и скрытые словари ---------- */
+const normName = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+const saveHidden = () => store.set('dhidden', JSON.stringify(hidden));
+interface DupMember { i: number; id: string; name: string; fmt: string; count: number; mb: number; folder: string }
+/** Группы словарей, похожих на один и тот же словарь: одинаковое название или одинаковое число заголовков. */
+function findDupGroups(): DupMember[][] {
+  const m: DupMember[] = [];
+  sources.forEach((src, i) => {
+    const st = status[i];
+    if (st?.s === 'ready') m.push({ i, id: src.id, name: origName(i), fmt: FMT[src.format] ?? src.format, count: st.count, mb: src.main.size / 1048576, folder: src.folder });
+  });
+  const parent = m.map((_, k) => k);
+  const find = (k: number): number => (parent[k] === k ? k : (parent[k] = find(parent[k])));
+  const seen = new Map<string, number>();
+  m.forEach((x, k) => {
+    for (const key of [`n:${normName(x.name)}`, x.count >= 500 ? `c:${x.count}` : '']) {
+      if (!key) continue;
+      const prev = seen.get(key);
+      if (prev === undefined) seen.set(key, k); else parent[find(k)] = find(prev);
+    }
+  });
+  const groups = new Map<number, DupMember[]>();
+  m.forEach((x, k) => { const r = find(k); (groups.get(r) ?? groups.set(r, []).get(r)!).push(x); });
+  return [...groups.values()]
+    .filter((g) => g.length > 1 && !notDup.has(g.map((x) => x.id).sort().join('|')));
+}
+const FMT_PREF: Record<string, number> = { MDict: 0, StarDict: 1, Slob: 2, DSL: 3 }; // какой вариант оставлять по умолчанию (компактнее и с ресурсами)
+
+function showDups() {
+  if (!ready) { out.innerHTML = '<div class="empty">Сначала дождитесь загрузки словарей.</div>'; return; }
+  const groups = findDupGroups().map((g) => [...g].sort((a, b) => (FMT_PREF[a.fmt] ?? 9) - (FMT_PREF[b.fmt] ?? 9) || a.mb - b.mb));
+  const hid = Object.entries(hidden);
+  const row = (x: DupMember, gi: number, k: number) => `<label class="duprow"><input type="radio" name="dg${gi}" value="${esc(x.id)}" ${k === 0 ? 'checked' : ''}><span><b>${esc(x.name)}</b><small>${esc(x.fmt)} · ${x.count.toLocaleString('ru')} слов · ${x.mb < 10 ? x.mb.toFixed(1) : Math.round(x.mb)} МБ${x.folder ? ' · ' + esc(x.folder) : ''}</small></span></label>`;
+  out.innerHTML = `<div class="result"><h1>Дубли и скрытые словари</h1>
+    <p class="sub">${groups.length ? `Похожих групп: ${groups.length}. В каждой отметьте словарь, который оставить: остальные скроются из списка и не будут загружаться (файлы не удаляются).` : 'Одинаковых словарей не нашлось.'}</p>
+    ${groups.map((g, gi) => `<div class="dupg" data-g="${gi}">${g.map((x, k) => row(x, gi, k)).join('')}<button type="button" class="chip" data-notdup="${gi}">Это не дубли</button></div>`).join('')}
+    ${groups.length ? '<button class="btn" id="duphide">Скрыть лишние</button>' : ''}
+    <h2 class="dupH">Скрытые словари</h2>
+    ${hid.length ? hid.map(([id, nm]) => `<div class="duphid"><span>${esc(nm)}<small>${esc(id)}</small></span><button type="button" class="chip" data-unhide="${esc(id)}">Вернуть</button></div>`).join('') : '<p class="sub">Скрытых нет.</p>'}
+  </div>`;
+  out.querySelectorAll<HTMLElement>('[data-notdup]').forEach((b) => b.addEventListener('click', () => {
+    notDup.add(groups[+b.dataset.notdup!].map((x) => x.id).sort().join('|'));
+    store.set('notdup', JSON.stringify([...notDup]));
+    showDups();
+  }));
+  out.querySelectorAll<HTMLElement>('[data-unhide]').forEach((b) => b.addEventListener('click', async () => {
+    delete hidden[b.dataset.unhide!];
+    saveHidden();
+    await ingest(lastEntries, lastLabel); // загружается снова вместе с вернувшимся словарём
+    showDups();
+  }));
+  const hide = document.getElementById('duphide');
+  if (hide) hide.onclick = async () => {
+    groups.forEach((g, gi) => {
+      const keep = (out.querySelector<HTMLInputElement>(`input[name="dg${gi}"]:checked`)?.value) ?? g[0].id;
+      for (const x of g) if (x.id !== keep) hidden[x.id] = x.name;
+    });
+    saveHidden();
+    await ingest(lastEntries, lastLabel);
+    showDups();
+  };
+}
 
 /* ---------- группы: сворачивание, переименование, перетаскивание ---------- */
 const dl = $('#dictlist');
@@ -833,6 +945,9 @@ function jumpToDict(i: number) {
 
 dl.addEventListener('click', (e) => {
   const t = e.target as HTMLElement;
+  if (t.closest('.rename')) return;
+  const pen = t.closest<HTMLElement>('.pen');
+  if (pen) { startRename(sources[+pen.dataset.pen!].id); return; }
   const row = t.closest<HTMLElement>('.dict');
   if (row && !t.closest('.sw')) { if (have.has(+row.dataset.i!)) jumpToDict(+row.dataset.i!); return; }
   const del = t.closest<HTMLElement>('[data-del]');
@@ -846,6 +961,8 @@ dl.addEventListener('click', (e) => {
   if (gh) { const g = lay.groups.find((x) => x.id === gh.dataset.g); if (g) { g.collapsed = !g.collapsed; saveRender(); } }
 });
 dl.addEventListener('dblclick', (e) => {
+  const nmEl = (e.target as HTMLElement).closest<HTMLElement>('.dict .nm');
+  if (nmEl && !(e.target as HTMLElement).closest('.rename')) { const id = nmEl.closest<HTMLElement>('.dict')!.dataset.id!; startRename(id); return; } // двойной щелчок по названию словаря
   const gh = (e.target as HTMLElement).closest<HTMLElement>('.ghead');
   const g = gh && lay.groups.find((x) => x.id === gh.dataset.g);
   if (!g) return;
@@ -1083,6 +1200,7 @@ $('#resetusage').onclick = () => {
   usageNote();
   if (rankOn) reshow();
 };
+$('#dups').onclick = () => { settings.close(); closeDrawer(); showDups(); };
 $('#resetsizes').onclick = () => { setSide(SIDE.def); setMain(MAIN.def); };
 
 // служба кэширования только в собранной версии (в разработке мешает перезагрузке)
