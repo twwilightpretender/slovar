@@ -407,10 +407,14 @@ function cloudScreen(msg = '', busy = false) {
 }
 
 /** Синхронизирует облачную папку с хранилищем браузера и загружает словари. */
+let cloudGen = 0; // номер запуска: устаревший запуск (экран уже сменился) тихо заканчивается
 async function openCloud(link: string) {
   if (!cloudSupported()) { cloudScreen('Облако работает в Chrome и Edge: нужна запись в хранилище браузера.'); return; }
   store.set(CLOUD_KEY, link);
   store.set('src', 'cloud');
+  cloudAbort?.abort(); // прежний запуск (если был) прекращаем
+  const gen = ++cloudGen;
+  const stale = () => gen !== cloudGen;
   cloudAbort = new AbortController();
   const signal = cloudAbort.signal;
   cloudScreen('', true);
@@ -428,12 +432,15 @@ async function openCloud(link: string) {
   try {
     remote = await listCloud(link, signal);
   } catch (e) {
+    if (stale()) return;
     if (await fromCache('Нет связи с облаком, использую скачанное.')) return;
     cloudScreen(signal.aborted ? '' : (e as Error).message || String(e));
     return;
   }
+  if (stale()) return;
   if (!remote.items.length) { cloudScreen('В этой папке не нашлось словарей (нужны файлы .mdx, .dsl, .ifo, .slob, .gls).'); return; }
   const plan = await planSync(link, remote);
+  if (stale()) return;
   let failed: { path: string; message: string }[] = [];
   if (plan.todo.length || plan.gone.length) {
     const est = await navigator.storage.estimate?.();
@@ -444,17 +451,22 @@ async function openCloud(link: string) {
     prog.innerHTML = `<p>Нужно скачать: ${plan.todo.length} файл(ов), ${mb(plan.bytes)}</p><div class="bar"><i id="cbar"></i></div><p id="ctxt" class="cfile">Подключаюсь к облаку…</p>`;
     try {
       failed = await syncCloud(link, remote, (p) => {
-        $('#cbar').style.width = (p.total ? Math.min(100, (p.done / p.total) * 100) : 100).toFixed(1) + '%';
-        $('#ctxt').textContent = `${mb(p.done)} из ${mb(p.total)} · готово файлов: ${p.fileNo} из ${p.files} · ${p.file.slice(p.file.lastIndexOf('/') + 1)}` + (p.note ? `
+        const bar = document.getElementById('cbar'), tx = document.getElementById('ctxt');
+        if (stale() || !bar || !tx) return; // экран уже сменился
+        bar.style.width = (p.total ? Math.min(100, (p.done / p.total) * 100) : 100).toFixed(1) + '%';
+        tx.textContent = `${mb(p.done)} из ${mb(p.total)} · готово файлов: ${p.fileNo} из ${p.files} · ${p.file.slice(p.file.lastIndexOf('/') + 1)}` + (p.note ? `
 ⚠ ${p.note}` : '');
       }, signal);
     } catch (e) {
+      if (stale()) return;
       if (signal.aborted) { if (await fromCache('Обновление отменено.')) return; cloudScreen(); return; }
       cloudScreen('Ошибка при скачивании: ' + ((e as Error).message || String(e)));
       return;
     }
   }
+  if (stale()) return;
   const have = await cloudEntries(link);
+  if (stale()) return;
   if (!have) {
     cloudScreen(failed.length ? 'Не удалось скачать ни одного файла: ' + failed.map((f) => f.path).join(', ') : 'Не удалось прочитать скачанные файлы.');
     return;
