@@ -50,7 +50,7 @@ export type Req =
 
 export type Res =
   | { t: 'dict'; idx: number; status: DictStatus }
-  | { t: 'loaded'; id: number; total: number; ms: number; phases: { readers: number; keys: number; sort: number } }
+  | { t: 'loaded'; id: number; total: number; ms: number; phases: { readers: number; keys: number; sort: number; merged?: number } }
   | { t: 'search'; id: number; items: Hit[]; fuzzy: boolean }
   | { t: 'article'; id: number; parts: ArticlePart[] }
   | { t: 'resource'; id: number; mime: string; data: ArrayBuffer | null }

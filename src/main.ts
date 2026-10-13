@@ -124,7 +124,9 @@ async function ingest(entries: Entry[], label: string) {
   onDict = (i, s) => { status[i] = s; renderDicts(); };
   const r = await call<Extract<Res, { t: 'loaded' }>>({ t: 'load', sources });
   ready = true;
-  lastPhases = `открытие словарей/кэшей ${fmtMs(r.phases.readers)}, нормализация ключей ${fmtMs(r.phases.keys)}, сортировка ${fmtMs(r.phases.sort)}`;
+  lastPhases = (walkMs ? `обход папки ${fmtMs(walkMs)}, ` : '') + `открытие словарей/кэшей ${fmtMs(r.phases.readers)}, ` + (r.phases.merged !== undefined
+    ? `готовый общий индекс из кэша ${fmtMs(r.phases.merged)}`
+    : `нормализация ключей ${fmtMs(r.phases.keys)}, сортировка ${fmtMs(r.phases.sort)} (индекс собран заново и сохранён)`);
   recordLoad(r.ms, r.total);
   assign(lay, sources.map((s, i) => {
     const st = status[i];
@@ -347,8 +349,13 @@ async function pick() {
 }
 async function openHandle(h: FileSystemDirectoryHandle) {
   q.placeholder = 'Читаю список файлов…';
-  await ingest(await walkHandle(h), h.name);
+  const t = performance.now();
+  const entries = await walkHandle(h);
+  walkMs = performance.now() - t;
+  await ingest(entries, h.name);
+  walkMs = 0;
 }
+let walkMs = 0; // сколько заняло чтение списка файлов папки (показывается в диагностике)
 
 /** Только в разработке: берёт файлы с dev-сервера, чтобы не вызывать окно выбора папки. */
 async function devLoad(filter: string) {

@@ -20,30 +20,63 @@ function db(): Promise<IDBDatabase> {
 }
 async function cacheClear(): Promise<void> {
   try { (await db()).close(); } catch { /* базы ещё не было */ }
+  try { (await mdb()).close(); } catch { /* базы ещё не было */ }
   dbp = null;
-  await new Promise<void>((ok) => {
-    const r = indexedDB.deleteDatabase('slovar-index');
-    r.onsuccess = r.onerror = r.onblocked = () => ok();
-  });
+  mdbp = null;
+  for (const name of ['slovar-index', 'slovar-merged']) {
+    await new Promise<void>((ok) => {
+      const r = indexedDB.deleteDatabase(name);
+      r.onsuccess = r.onerror = r.onblocked = () => ok();
+    });
+  }
 }
-async function cacheGet(id: string): Promise<{ sig: string; v: number; cache: unknown } | undefined> {
+
+/*
+ * Заголовки словаря (миллионы строк) хранятся в кэше одной длинной строкой: IndexedDB копирует такую строку
+ * почти мгновенно, а массив из миллионов отдельных строк — секунды.
+ */
+const SEP = '\u0001';
+type CacheRec = { sig: string; v: number; cache: unknown };
+type WithHw = { headwords?: string[]; headwordsJ?: string; hwn?: number };
+function packCache(rec: CacheRec): CacheRec {
+  const c = rec.cache as WithHw | null;
+  if (c && Array.isArray(c.headwords) && c.headwords.length > 1000 && !c.headwords.some((h) => h.includes(SEP))) {
+    const { headwords, ...rest } = c;
+    return { ...rec, cache: { ...rest, headwordsJ: headwords.join(SEP), hwn: headwords.length } };
+  }
+  return rec;
+}
+function unpackCache(rec: CacheRec): { rec: CacheRec; packed: boolean } {
+  const c = rec.cache as WithHw | null;
+  if (c && typeof c.headwordsJ === 'string') {
+    const { headwordsJ, hwn, ...rest } = c;
+    const headwords = headwordsJ.split(SEP);
+    if (headwords.length === hwn) return { rec: { ...rec, cache: { ...rest, headwords } }, packed: true };
+    return { rec: { sig: '', v: -1, cache: undefined }, packed: true }; // повреждённая запись: пересоберём
+  }
+  return { rec, packed: false };
+}
+
+async function cacheGet(id: string): Promise<{ rec: CacheRec; packed: boolean } | undefined> {
   try {
     const d = await db();
-    return await new Promise((ok) => {
+    const rec: CacheRec | undefined = await new Promise((ok) => {
       const r = d.transaction('idx').objectStore('idx').get(id);
       r.onsuccess = () => ok(r.result);
       r.onerror = () => ok(undefined);
     });
+    return rec ? unpackCache(rec) : undefined;
   } catch {
     return undefined;
   }
 }
-async function cachePut(id: string, val: unknown): Promise<void> {
+async function cachePut(id: string, val: CacheRec): Promise<void> {
   try {
     const d = await db();
+    const rec = packCache(val);
     await new Promise<void>((ok) => {
       const tx = d.transaction('idx', 'readwrite');
-      tx.objectStore('idx').put(val, id);
+      tx.objectStore('idx').put(rec, id);
       tx.oncomplete = () => ok();
       tx.onerror = () => ok();
       tx.onabort = () => ok();
@@ -51,6 +84,53 @@ async function cachePut(id: string, val: unknown): Promise<void> {
   } catch {
     /* кэш необязателен */
   }
+}
+
+/* ---------- кэш готового общего индекса ---------- */
+const MERGED_VERSION = 1; // менять при изменении нормализации ключей (core/normalize.ts) или формата этого кэша
+interface Merged { k: string; o: Uint32Array; d: Uint16Array; e: Uint32Array; c: Uint32Array }
+let mdbp: Promise<IDBDatabase> | null = null;
+function mdb(): Promise<IDBDatabase> {
+  return (mdbp ??= new Promise((ok, no) => {
+    const r = indexedDB.open('slovar-merged', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('m');
+    r.onsuccess = () => ok(r.result);
+    r.onerror = () => { mdbp = null; no(r.error); };
+  }));
+}
+const idbGet = <T>(d: IDBDatabase, key: string) =>
+  new Promise<T | undefined>((ok) => {
+    const r = d.transaction('m').objectStore('m').get(key);
+    r.onsuccess = () => ok(r.result);
+    r.onerror = () => ok(undefined);
+  });
+async function mergedGet(sig: string): Promise<Merged | null> {
+  try {
+    const d = await mdb();
+    if ((await idbGet<string>(d, 'sig')) !== sig) return null; // словари изменились: индекс устарел
+    return (await idbGet<Merged>(d, 'data')) ?? null;
+  } catch {
+    return null;
+  }
+}
+async function mergedPut(sig: string, data: Merged): Promise<void> {
+  try {
+    const d = await mdb();
+    await new Promise<void>((ok) => {
+      const tx = d.transaction('m', 'readwrite');
+      tx.objectStore('m').put(data, 'data');
+      tx.objectStore('m').put(sig, 'sig'); // в одной транзакции: либо оба, либо ничего
+      tx.oncomplete = () => ok();
+      tx.onerror = () => ok();
+      tx.onabort = () => ok();
+    });
+  } catch {
+    /* кэш необязателен */
+  }
+}
+/** Подпись набора словарей: меняется, если изменился любой файл, число заголовков или состав. */
+function mergedSig(): string {
+  return MERGED_VERSION + '|' + VERSION + '|' + dicts.map((d) => `${d.src.id}:${d.src.main.size}:${d.src.main.lastModified}:${d.reader ? d.reader.headwords.length : 'x'}`).join('|');
 }
 
 /* ---------- состояние ---------- */
@@ -65,26 +145,30 @@ let E: Uint32Array = new Uint32Array(0); // номер записи в слов�
 let order: Uint32Array = new Uint32Array(0); // записи по возрастанию ключа
 let C: Uint32Array = new Uint32Array(0); // у формы слова (синоним StarDict) — запись главного заголовка, у остальных — своя
 
+let loadSeq = 0;
 async function load(id: number, sources: Source[]) {
   const t0 = performance.now();
+  const mine = ++loadSeq;
   dicts = sources.map((src) => ({ src, reader: null }));
   looseIdx.clear();
   articleOrders.clear();
   const st = (idx: number, status: DictStatus) => post({ t: 'dict', idx, status });
   sources.forEach((_, i) => st(i, { s: 'queued' }));
 
-  for (let i = 0; i < sources.length; i++) {
+  const repack: { id: string; rec: CacheRec }[] = []; // кэши старого формата (массив строк): перепишем быстрым форматом после загрузки
+  const openOne = async (i: number) => {
     const src = sources[i];
     const fmt = FORMATS[src.format];
     if (!fmt) {
       st(i, { s: 'skipped', reason: src.format === 'bgl' ? 'BGL пока не читается — переведите в DSL' : 'формат ' + src.format.toUpperCase() + ' не поддерживается' });
-      continue;
+      return;
     }
     const t1 = performance.now();
     try {
       const sig = src.main.size + ':' + src.main.lastModified;
       const hit = await cacheGet(src.id);
-      const cached = hit && hit.sig === sig && hit.v === VERSION ? hit.cache : undefined;
+      const ok = hit && hit.rec.sig === sig && hit.rec.v === VERSION;
+      const cached = ok ? hit.rec.cache : undefined;
       st(i, { s: 'indexing', done: 0, total: 1 });
       let last = 0;
       const { reader, cache } = await fmt.open(src, cached, (d, t) => {
@@ -95,6 +179,7 @@ async function load(id: number, sources: Source[]) {
         }
       });
       if (!cached) await cachePut(src.id, { sig, v: VERSION, cache });
+      else if (!hit!.packed && reader.headwords.length > 1000) repack.push({ id: src.id, rec: { sig, v: VERSION, cache } });
       dicts[i].reader = reader;
       st(i, {
         s: 'ready',
@@ -107,10 +192,33 @@ async function load(id: number, sources: Source[]) {
     } catch (e) {
       st(i, { s: 'error', reason: e instanceof Error ? e.message : String(e) });
     }
-  }
+  };
+  // несколько словарей открываются одновременно: чтение кэшей и файлов перекрываются
+  let nextDict = 0;
+  await Promise.all(Array.from({ length: 3 }, async () => { while (nextDict < sources.length) await openOne(nextDict++); }));
   const tReaders = performance.now() - t0;
-  const phases = buildIndex();
+
+  // готовый общий индекс: если словари не менялись, нормализация и сортировка миллионов ключей не нужны
+  const sig = mergedSig();
+  const tm = performance.now();
+  const m = await mergedGet(sig);
+  let phases: { keys: number; sort: number; merged?: number };
+  let fresh = false;
+  if (m && m.o.length === m.d.length && m.e.length === m.d.length && m.c.length === m.d.length) {
+    K = m.k.split(SEP);
+    if (K.length === m.d.length) {
+      D = m.d; E = m.e; C = m.c; order = m.o;
+      phases = { keys: 0, sort: 0, merged: Math.round(performance.now() - tm) };
+    } else { phases = buildIndex(); fresh = true; }
+  } else { phases = buildIndex(); fresh = true; }
   post({ t: 'loaded', id, total: K.length, ms: Math.round(performance.now() - t0), phases: { readers: Math.round(tReaders), ...phases } });
+
+  // сохраняем то, что пересчитано, уже после показа результата (один раз)
+  setTimeout(async () => {
+    if (mine !== loadSeq) return; // тем временем началась новая загрузка
+    if (fresh && !K.some((k) => k.includes(SEP))) await mergedPut(sig, { k: K.join(SEP), o: order, d: D, e: E, c: C });
+    for (const r of repack) await cachePut(r.id, r.rec);
+  }, 50);
 }
 
 function buildIndex(): { keys: number; sort: number } {
