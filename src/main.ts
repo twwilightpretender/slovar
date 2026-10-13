@@ -1196,6 +1196,8 @@ const LOOKS: Look[] = [
   { id: 'ocean', name: 'Океан', soft: true, palette: 'ocean', grad: 'linear-gradient(135deg,#e3f2ff,#e2f6fb 55%,#e9f0ff)', dot: '#1383d6' },
   { id: 'forest', name: 'Лес', soft: true, palette: 'forest', grad: 'linear-gradient(135deg,#e6f6ea,#e3f4ef 55%,#eaf3df)', dot: '#1f9d6b' },
   { id: 'paper', name: 'Книга', soft: false, palette: 'paper', grad: 'linear-gradient(135deg,#f1e8d4,#e6d9bb)', dot: '#a4572b' },
+  { id: 'night', name: 'Ночь', soft: true, palette: 'night', grad: 'linear-gradient(135deg,#e8e9fb,#8e9bff 45%,#11142e 55%,#0b1024)', dot: '#4c52d6' },
+  { id: 'graphite', name: 'Графит', soft: false, palette: 'graphite', grad: 'linear-gradient(135deg,#e9eaec,#b9bdc2 50%,#2a2d31)', dot: '#3f6f86' },
 ];
 let lookId = store.get('look') || (store.get('style') === 'soft' ? 'violet' : 'classic'); // раньше было только «обычный» / «мягче»
 function setLook(id: string) {

@@ -297,6 +297,14 @@ aside{align-self:start;height:100vh;position:sticky;top:0}
 :root[data-palette="paper"]:not([data-theme="dark"]){--bg:#f1e8d4;--panel:#fbf5e6;--panel2:#eadfc6;--line:#ddcfb0;--text:#3b2f22;--muted:#8a7860;--accent:#a4572b;--accent-soft:#f3e1cf;--shadow:0 1px 2px rgba(80,50,10,.08),0 8px 24px rgba(80,50,10,.08);--d1:#a4572b;--d2:#2f6f9a;--d3:#4a7a3a;--d4:#8a4a8a;--d5:#a88300;--d6:#b23a2a;--d7:#2a7f86;--d8:#8a7860}
 :root[data-palette="paper"][data-theme="dark"]{--bg:#1c1812;--panel:#25201a;--panel2:#2e2820;--line:#3a3226;--text:#eadfc8;--muted:#a8987c;--accent:#e0a060;--accent-soft:#3a2c1a;--shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);--d1:#e0a060;--d2:#7fb2d8;--d3:#8fc27a;--d4:#c89ad0;--d5:#e6c84f;--d6:#e8806a;--d7:#6fc0c4;--d8:#a8987c}
 
+/* «Ночь»: сумеречный индиго; светлая тема — бледные сумерки, тёмная — глубокая синяя ночь */
+:root[data-palette="night"]:not([data-theme="dark"]){--bgimg:linear-gradient(155deg,#e8e9fb 0%,#e3e6f7 50%,#ece6f6 100%);--bg:#eceefa;--panel:rgba(255,255,255,.78);--panel2:rgba(76,82,214,.07);--line:rgba(80,86,170,.18);--text:#1d2040;--muted:#6f74a0;--accent:#4c52d6;--accent-soft:#e1e3fb;--shadow:0 12px 34px rgba(60,66,180,.15);--d1:#4c52d6;--d2:#d9772a;--d3:#12a58a;--d4:#a14bc4;--d5:#b99400;--d6:#d94a5a;--d7:#1a8fb8;--d8:#6f74a0}
+:root[data-palette="night"][data-theme="dark"]{--bgimg:linear-gradient(155deg,#0d1130 0%,#11142e 55%,#0b1024 100%);--bg:#0f1230;--panel:rgba(22,26,60,.72);--panel2:rgba(140,155,255,.09);--line:rgba(150,165,255,.14);--text:#e8eaff;--muted:#9aa0cf;--accent:#8e9bff;--accent-soft:rgba(142,155,255,.16);--shadow:0 12px 34px rgba(0,0,0,.45);--d1:#8e9bff;--d2:#ffab7a;--d3:#5fe0bf;--d4:#d6a0ff;--d5:#f2d36b;--d6:#ff9a9a;--d7:#7fd6f0;--d8:#9aa0cf}
+
+/* «Графит»: нейтральный серый без градиента, форма обычная */
+:root[data-palette="graphite"]:not([data-theme="dark"]){--bg:#e9eaec;--panel:#f6f6f7;--panel2:#dfe1e4;--line:#cfd2d6;--text:#25282c;--muted:#7a7f87;--accent:#3f6f86;--accent-soft:#dbe8ee;--shadow:0 1px 2px rgba(20,25,30,.08),0 8px 24px rgba(20,25,30,.08);--d1:#3f6f86;--d2:#c0652a;--d3:#4d8a4a;--d4:#8a5aa8;--d5:#a88300;--d6:#c04545;--d7:#2a8a8f;--d8:#7a7f87}
+:root[data-palette="graphite"][data-theme="dark"]{--bg:#17191b;--panel:#202326;--panel2:#292d31;--line:#34393e;--text:#e4e6e8;--muted:#8f959c;--accent:#7cc0d8;--accent-soft:#20323a;--shadow:0 1px 2px rgba(0,0,0,.45),0 8px 24px rgba(0,0,0,.4);--d1:#7cc0d8;--d2:#e8a070;--d3:#8fc98a;--d4:#c4a0dc;--d5:#e6c84f;--d6:#ef8a8a;--d7:#6fcfc9;--d8:#8f959c}
+
 /* ===== выбор оформления в настройках ===== */
 .looks{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;padding:2px 0 10px}
 .look{display:block;padding:0;margin:0;border:2px solid var(--line);border-radius:14px;overflow:hidden;background:var(--panel);color:var(--text);cursor:pointer;text-align:left;font:inherit;transition:border-color .15s,box-shadow .15s}
