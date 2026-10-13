@@ -593,7 +593,7 @@ document.addEventListener('keydown', (e) => {
 });
 /* курсор сам возвращается в строку поиска: не надо листать наверх */
 const focusSearch = () => { if (!q.disabled && document.activeElement !== q) q.focus({ preventScroll: true }); };
-const INTERACTIVE = 'a,button,input,textarea,select,label,summary,[data-w],[data-snd],[data-scope],[data-del],[data-back],.fthit,.mode,#modeAll,#dictlist .dict,.ghead,.card>header,.sw,.btn,.chip,#resizer,.sug,.tips,.recent button';
+const INTERACTIVE = 'a,button,input,textarea,select,label,summary,[data-w],[data-snd],[data-scope],[data-del],[data-back],.fthit,.mode,#modeAll,#dictlist .dict,.ghead,.card>header,.sw,.btn,.chip,#resizer,.mrz,.sug,.tips,.recent button';
 document.addEventListener('click', (e) => {
   if ((e as PointerEvent).pointerType === 'touch') return; // на сенсорном экране не вызываем клавиатуру
   if (window.getSelection()?.toString()) return; // человек выделяет текст
@@ -765,6 +765,61 @@ addEventListener('resize', () => setSide(+store.get('sidew', String(SIDE.def)) |
     if (e.key === 'ArrowLeft') { setSide(cur() - 16); e.preventDefault(); }
     else if (e.key === 'ArrowRight') { setSide(cur() + 16); e.preventDefault(); }
     else if (e.key === 'Home') { setSide(SIDE.def); e.preventDefault(); }
+  });
+}
+
+/* ---------- ширина области с текстом ---------- */
+const MAIN = { min: 520, def: 1000 };
+const mainEl = document.querySelector('main') as HTMLElement;
+let mainW = MAIN.def;
+const cellW = () => window.innerWidth <= 820 ? window.innerWidth : window.innerWidth - (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--side-w'), 10) || SIDE.def);
+const clampMain = (w: number) => Math.round(Math.max(MAIN.min, Math.min(Math.max(MAIN.min, cellW()), w)));
+function placeMainHandles() {
+  const r = mainEl.getBoundingClientRect();
+  const pad = parseFloat(getComputedStyle(mainEl).paddingLeft) || 0;
+  $('#mrzL').style.left = r.left + pad - 4.5 + 'px';
+  $('#mrzR').style.left = r.right - pad - 4.5 + 'px';
+  for (const h of [$('#mrzL'), $('#mrzR')]) h.setAttribute('aria-valuenow', String(mainW));
+}
+function setMain(w: number, save = true) {
+  mainW = clampMain(w);
+  document.documentElement.style.setProperty('--main-w', mainW + 'px');
+  if (save) store.set('mainw', String(mainW));
+  placeMainHandles();
+}
+setMain(+store.get('mainw', String(MAIN.def)) || MAIN.def, false);
+addEventListener('resize', () => setMain(+store.get('mainw', String(MAIN.def)) || MAIN.def, false));
+new ResizeObserver(placeMainHandles).observe(mainEl);
+for (const rz of [$('#mrzL'), $('#mrzR')]) {
+  const dir = +(rz.dataset.side as string); // −1 левая ручка, +1 правая
+  let center = 0;
+  rz.addEventListener('pointerdown', (e) => {
+    const r = mainEl.getBoundingClientRect();
+    center = (r.left + r.right) / 2;
+    rz.setPointerCapture(e.pointerId);
+    rz.classList.add('drag');
+    document.body.classList.add('resizing');
+    e.preventDefault();
+  });
+  rz.addEventListener('pointermove', (e) => {
+    if (!rz.hasPointerCapture(e.pointerId)) return;
+    const pad = parseFloat(getComputedStyle(mainEl).paddingLeft) || 0;
+    setMain(2 * Math.abs(e.clientX - center) + 2 * pad, false);
+  });
+  const stop = (e: PointerEvent) => {
+    if (!rz.hasPointerCapture(e.pointerId)) return;
+    rz.releasePointerCapture(e.pointerId);
+    rz.classList.remove('drag');
+    document.body.classList.remove('resizing');
+    setMain(mainW); // сохранить
+  };
+  rz.addEventListener('pointerup', stop);
+  rz.addEventListener('pointercancel', stop);
+  rz.addEventListener('dblclick', () => setMain(MAIN.def));
+  rz.addEventListener('keydown', (e) => { // стрелки в сторону от текста расширяют, к тексту сужают; Home — сброс
+    if (e.key === 'ArrowLeft') { setMain(mainW - dir * 32); e.preventDefault(); }
+    else if (e.key === 'ArrowRight') { setMain(mainW + dir * 32); e.preventDefault(); }
+    else if (e.key === 'Home') { setMain(MAIN.def); e.preventDefault(); }
   });
 }
 
