@@ -37,6 +37,7 @@ aside{background:var(--panel);border-right:1px solid var(--line);padding:22px 16
 .side-foot{margin-top:auto;display:flex;gap:8px;flex-wrap:wrap}
 .chip{border:1px solid var(--line);background:var(--panel2);border-radius:var(--rs);padding:6px 11px;font-size:13px}
 .chip:hover{border-color:var(--accent)}
+a.chip{text-decoration:none;color:inherit;display:inline-block}
 /* main */
 main{padding:34px clamp(18px,4vw,60px) 80px;max-width:var(--main-w,1000px);width:100%;margin:0 auto}
 .search{position:relative}

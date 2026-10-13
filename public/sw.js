@@ -1,7 +1,7 @@
 // Служба кэширования: хранит только сам сайт (код, стили, значки), словари не трогает.
 // Страница (index.html): сначала сеть, при её отсутствии кэш, так что новая версия
 // подхватывается при ближайшем открытии. Файлы в assets/ имеют хэш в имени и не меняются.
-const CACHE = 'slovar-shell-v2';
+const CACHE = 'slovar-shell-v3';
 
 self.addEventListener('install', () => self.skipWaiting());
 
@@ -20,14 +20,16 @@ self.addEventListener('fetch', (e) => {
   if (url.origin !== self.location.origin) return;
 
   if (req.mode === 'navigate') {
+    // главная страница кэшируется под ключом './', остальные (справка) под своим адресом
+    const isHome = url.pathname.endsWith('/') || url.pathname.endsWith('/index.html');
     e.respondWith(
       fetch(req)
         .then((res) => {
           const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put('./', copy));
+          caches.open(CACHE).then((c) => c.put(isHome ? './' : req, copy));
           return res;
         })
-        .catch(() => caches.match('./').then((r) => r || Response.error())),
+        .catch(() => caches.match(isHome ? './' : req).then((r) => r || Response.error())),
     );
     return;
   }
