@@ -22,6 +22,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 /* sidebar */
 aside{background:var(--panel);border-right:1px solid var(--line);padding:22px 16px;display:flex;flex-direction:column;gap:22px;height:100vh;position:sticky;top:0;overflow:auto}
 .brand{display:flex;align-items:center;gap:10px;font-weight:650;font-size:17px;letter-spacing:.2px}
+.brand img{width:30px;height:30px;border-radius:8px;display:block;box-shadow:0 2px 8px rgba(70,60,200,.28)}
 .brand i{width:28px;height:28px;border-radius:var(--rs);background:linear-gradient(135deg,var(--accent),#9b6bff);display:grid;place-items:center;color:#fff;font-style:normal;font-weight:700;font-size:15px}
 .grp h4{margin:0 0 8px;font-size:11.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:600;display:flex;justify-content:space-between}
 .dict{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:var(--rs);cursor:pointer;user-select:none;border:1px solid transparent}
@@ -99,6 +100,7 @@ main{padding:34px clamp(18px,4vw,60px) 80px;max-width:var(--main-w,1000px);width
 :root[data-style="soft"]:not([data-theme="dark"]){--bgimg:linear-gradient(155deg,#fdeee6 0%,#f1ecfd 55%,#e6f2fb 100%);--bg:#f6f1fb;--panel:rgba(255,255,255,.78);--panel2:rgba(122,90,245,.07);--line:rgba(110,90,170,.16);--text:#2a2440;--muted:#8079a0;--accent:#7a5af5;--accent-soft:#eee9ff;--shadow:0 12px 34px rgba(120,90,200,.13);--d1:#7a5af5;--d2:#ee7a3c;--d3:#12a58a;--d4:#c24bd6;--d5:#c49b00;--d6:#d94a3a;--d7:#1a8fb8;--d8:#8079a0}
 :root[data-style="soft"][data-theme="dark"]{--bgimg:linear-gradient(155deg,#2a1f35 0%,#1b1a2e 55%,#14212b 100%);--bg:#1b1a2e;--panel:rgba(40,36,58,.72);--panel2:rgba(183,162,255,.09);--line:rgba(200,185,255,.14);--text:#efeaff;--muted:#a49fc4;--accent:#bba8ff;--accent-soft:rgba(187,168,255,.16);--shadow:0 12px 34px rgba(0,0,0,.35);--d1:#bba8ff;--d2:#ffab7a;--d3:#5fe0bf;--d4:#f0a0ff;--d5:#f2d36b;--d6:#ff9a85;--d7:#7fd6f0;--d8:#b4afd0}
 :root[data-style="soft"] aside,:root[data-style="soft"] .card,:root[data-style="soft"] .sbox,:root[data-style="soft"] .sug{-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur)}
+:root[data-style="soft"] .brand img{width:34px;height:34px;border-radius:10px}
 :root[data-style="soft"] .brand i{background:linear-gradient(135deg,#ff9a6b,#8a6bff);border-radius:14px;width:32px;height:32px}
 :root[data-style="soft"] .dict{padding:11px 12px}
 :root[data-style="soft"] .sbox{padding:0 26px}

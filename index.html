@@ -4,21 +4,26 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Словарь</title>
-<meta name="theme-color" content="#2f5bea">
+<meta name="theme-color" content="#f6f5f2">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232f5bea'/%3E%3Ctext x='16' y='23' font-size='20' text-anchor='middle' fill='white' font-family='sans-serif'%3E%D0%A1%3C/text%3E%3C/svg%3E">
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<link rel="icon" type="image/png" sizes="192x192" href="app-icon-192.png">
+<link rel="apple-touch-icon" href="app-icon-192.png">
 <script>
-  // тема и вид до отрисовки, чтобы не мигало
+  // тема и вид до отрисовки, чтобы не мигало; верхняя планка окна приложения красится в цвет фона темы
   try {
     const t = localStorage.getItem('theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
     document.documentElement.dataset.theme = t;
-    if (localStorage.getItem('style') === 'soft') document.documentElement.dataset.style = 'soft';
+    const soft = localStorage.getItem('style') === 'soft';
+    if (soft) document.documentElement.dataset.style = 'soft';
+    const bg = { light: '#f6f5f2', dark: '#141517', softlight: '#f6f1fb', softdark: '#1b1a2e' }[(soft ? 'soft' : '') + t];
+    document.querySelector('meta[name="theme-color"]').content = bg;
   } catch (e) {}
 </script>
 </head>
 <body>
 <aside>
-  <div class="brand"><i>С</i> Словарь</div>
+  <div class="brand"><img src="app-icon-192.png" alt="" width="30" height="30"> Словарь</div>
   <div id="dictlist"></div>
   <div class="status" id="status"></div>
   <div class="side-foot">

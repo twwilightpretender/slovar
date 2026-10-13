@@ -965,9 +965,15 @@ for (const rz of [$('#mrzL'), $('#mrzR')]) {
 }
 
 /* ---------- тема, вид, размер шрифта ---------- */
+/** Верхняя планка окна установленного приложения (и адресная строка на телефоне) красится в цвет фона текущей темы. */
+function syncChrome() {
+  const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+  if (bg) document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute('content', bg);
+}
 function setTheme(t: string) {
   document.documentElement.dataset.theme = t;
   store.set('theme', t);
+  syncChrome();
   adaptAll();
 }
 $('#theme').onclick = () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
@@ -975,6 +981,7 @@ function setStyle(soft: boolean) {
   if (soft) document.documentElement.dataset.style = 'soft'; else delete document.documentElement.dataset.style;
   $('#style').textContent = '▦ Вид: ' + (soft ? 'мягче' : 'обычный');
   store.set('style', soft ? 'soft' : '');
+  syncChrome();
 }
 $('#style').onclick = () => setStyle(document.documentElement.dataset.style !== 'soft');
 setStyle(store.get('style') === 'soft');

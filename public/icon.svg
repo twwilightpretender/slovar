@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3f6bff"/>
+      <stop offset="1" stop-color="#8f5cf7"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.25" cy="0.15" r="0.9">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.34"/>
+      <stop offset="0.6" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="pageL" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e9edff"/>
+    </linearGradient>
+    <linearGradient id="pageR" x1="1" y1="0" x2="0" y2="0">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e9edff"/>
+    </linearGradient>
+    <linearGradient id="rib" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffb35c"/>
+      <stop offset="1" stop-color="#ff5d7a"/>
+    </linearGradient>
+  </defs>
+  <!--BG-->
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <rect width="512" height="512" rx="112" fill="url(#glow)"/>
+  <!--ART-->
+  <g>
+    <!-- обложка (толщина книги) -->
+    <path d="M256 214 C 216 186, 138 180, 78 202 L 78 392 C 138 372, 216 378, 256 408 Z" fill="#1a2373" fill-opacity="0.55"/>
+    <path d="M256 214 C 296 186, 374 180, 434 202 L 434 392 C 374 372, 296 378, 256 408 Z" fill="#1a2373" fill-opacity="0.55"/>
+    <!-- страницы -->
+    <path d="M256 196 C 218 168, 148 162, 92 182 L 92 372 C 148 354, 218 360, 256 388 Z" fill="url(#pageL)"/>
+    <path d="M256 196 C 294 168, 364 162, 420 182 L 420 372 C 364 354, 294 360, 256 388 Z" fill="url(#pageR)"/>
+    <!-- стопка страниц снизу -->
+    <path d="M92 372 C 148 354, 218 360, 256 388" fill="none" stroke="#c9d1fb" stroke-width="5" stroke-linecap="round" transform="translate(0 7)"/>
+    <path d="M420 372 C 364 354, 294 360, 256 388" fill="none" stroke="#c9d1fb" stroke-width="5" stroke-linecap="round" transform="translate(0 7)"/>
+    <!-- строки текста -->
+    <g fill="none" stroke="#b5c0f4" stroke-width="9" stroke-linecap="round">
+      <path d="M120 222 C 158 212, 204 216, 234 232"/>
+      <path d="M120 258 C 158 248, 204 252, 234 268"/>
+      <path d="M120 294 C 158 284, 204 288, 234 304"/>
+      <path d="M120 330 C 150 322, 180 324, 204 334"/>
+      <path d="M392 222 C 354 212, 308 216, 278 232"/>
+      <path d="M392 258 C 354 248, 308 252, 278 268"/>
+      <path d="M392 294 C 354 284, 308 288, 278 304"/>
+    </g>
+    <!-- корешок -->
+    <path d="M256 196 L 256 388" stroke="#8c98e6" stroke-opacity="0.55" stroke-width="5"/>
+    <!-- закладка -->
+    <path d="M306 164 L 306 318 L 328 298 L 350 318 L 350 176 Z" fill="url(#rib)"/>
+    <path d="M306 164 L 350 176 L 350 192 L 306 180 Z" fill="#ffffff" fill-opacity="0.22"/>
+    <!-- искорки -->
+    <path d="M118 116 l7 17 l17 7 l-17 7 l-7 17 l-7 -17 l-17 -7 l17 -7 Z" fill="#ffffff" fill-opacity="0.95"/>
+    <path d="M410 98 l5 12 l12 5 l-12 5 l-5 12 l-5 -12 l-12 -5 l12 -5 Z" fill="#ffffff" fill-opacity="0.8"/>
+  </g>
+</svg>
