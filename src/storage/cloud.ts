@@ -34,7 +34,56 @@ interface Manifest {
   items: Record<string, CloudItem & { stored: string }>;
 }
 
-export const cloudSupported = () => !!(navigator.storage && 'getDirectory' in navigator.storage && 'createWritable' in FileSystemFileHandle.prototype);
+/** Запись в OPFS: createWritable (Chrome, Edge, Firefox) или рабочий поток с синхронным доступом (Safari и всё на iPhone). */
+const hasWritable = () => typeof FileSystemFileHandle !== 'undefined' && 'createWritable' in FileSystemFileHandle.prototype;
+// createSyncAccessHandle виден только внутри воркера, из страницы его не проверить: если OPFS есть, а прямой записи нет (Safari), пишем через воркер
+const hasSyncAccess = () => !!(navigator.storage && 'getDirectory' in navigator.storage && typeof Worker !== 'undefined');
+const forceSync = () => { try { return localStorage.getItem('forcesync') === '1'; } catch { return false; } }; // для проверки запасного пути в Chrome
+export const cloudSupported = () => !!(navigator.storage && 'getDirectory' in navigator.storage && (hasWritable() || hasSyncAccess()));
+/** Для диагностики: что умеет этот браузер. */
+export const cloudCapabilities = () => ({
+  opfs: !!(navigator.storage && 'getDirectory' in navigator.storage),
+  createWritable: hasWritable(),
+  syncAccess: hasSyncAccess(),
+});
+
+/** Приёмник записи файла: одинаково работает поверх createWritable и поверх воркера. */
+interface Sink {
+  write(b: Blob): Promise<void>;
+  reset(): Promise<void>; // начать файл заново
+  close(): Promise<void>;
+  abort(): Promise<void>;
+}
+async function openSink(fh: FileSystemFileHandle): Promise<Sink> {
+  if (hasWritable() && !forceSync()) {
+    const w = await (fh as FileSystemFileHandle & { createWritable(): Promise<FileSystemWritableFileStream> }).createWritable();
+    return {
+      write: (b) => w.write(b),
+      reset: async () => { await w.truncate(0); await w.seek(0); },
+      close: () => w.close(),
+      abort: () => w.abort(),
+    };
+  }
+  const worker = new Worker(new URL('../worker/opfswriter.worker.ts', import.meta.url), { type: 'module' });
+  let seq = 0;
+  const waiting = new Map<number, { ok: () => void; no: (e: Error) => void }>();
+  worker.onmessage = (ev: MessageEvent<{ id: number; ok?: boolean; err?: string }>) => {
+    const w = waiting.get(ev.data.id);
+    if (!w) return;
+    waiting.delete(ev.data.id);
+    if (ev.data.err) w.no(new Error(ev.data.err)); else w.ok();
+  };
+  worker.onerror = (e) => { for (const w of waiting.values()) w.no(new Error(e.message || 'ошибка записи')); waiting.clear(); };
+  const call = (m: object, transfer: Transferable[] = []) =>
+    new Promise<void>((ok, no) => { const id = ++seq; waiting.set(id, { ok, no }); worker.postMessage({ ...m, id }, transfer); });
+  await call({ t: 'open', file: fh });
+  return {
+    write: async (b) => { const buf = await b.arrayBuffer(); await call({ t: 'write', buf }, [buf]); },
+    reset: () => call({ t: 'reset' }),
+    close: async () => { try { await call({ t: 'close' }); } finally { worker.terminate(); } },
+    abort: async () => { try { await call({ t: 'abort' }); } finally { worker.terminate(); } },
+  };
+}
 
 /**
  * Ссылка на папку Яндекс.Диска (disk.yandex.ru/d/XXXX, disk.360.yandex.ru, yadi.sk)
@@ -159,8 +208,8 @@ async function readManifest(dir: FileSystemDirectoryHandle): Promise<Manifest | 
   }
 }
 async function writeManifest(dir: FileSystemDirectoryHandle, m: Manifest): Promise<void> {
-  const w = await (await dir.getFileHandle('manifest.json', { create: true })).createWritable();
-  await w.write(JSON.stringify(m));
+  const w = await openSink(await dir.getFileHandle('manifest.json', { create: true }));
+  await w.write(new Blob([JSON.stringify(m)]));
   await w.close();
 }
 function storedName(path: string, n: number): string {
@@ -182,7 +231,7 @@ async function fetchToFile(
   link: string, item: CloudItem, dir: FileSystemDirectoryHandle, stored: string,
   onBytes: (n: number) => void, onNote: (msg: string) => void, signal?: AbortSignal,
 ): Promise<void> {
-  const w = await (await dir.getFileHandle(stored, { create: true })).createWritable();
+  const w = await openSink(await dir.getFileHandle(stored, { create: true }));
   let written = 0;
   const STALL = 20000;// столько ждём байтов, потом считаем соединение зависшим (Яндекс иногда «подвешивает» поток)
   try {
@@ -200,8 +249,7 @@ async function fetchToFile(
         const res = await fetch(href, written ? { headers: { Range: `bytes=${written}-` }, signal: att.signal, referrerPolicy: 'no-referrer' } : { signal: att.signal, referrerPolicy: 'no-referrer' });
         bump();
         if (written && res.status !== 206) { // сервер не умеет докачку: начинаем файл заново
-          await w.truncate(0);
-          await w.seek(0);
+          await w.reset();
           onBytes(-written);
           written = 0;
         }
@@ -281,6 +329,9 @@ export async function syncCloud(
   };
   await navigator.storage.persist?.().catch(() => false); // просим не вытеснять скачанное
   const failed: { path: string; message: string }[] = [];
+  // запись манифеста строго по очереди: синхронный доступ к файлу в Safari не допускает двух писателей сразу
+  let manifestChain: Promise<void> = Promise.resolve();
+  const saveManifest = () => (manifestChain = manifestChain.catch(() => {}).then(() => writeManifest(dir, m)));
   const worker = async () => {
     while (queue.length) {
       const it = queue.shift()!;
@@ -298,12 +349,12 @@ export async function syncCloud(
       if (prev) try { await dir.removeEntry(prev.stored); } catch { /* старой копии уже нет */ }
       m.items[it.path] = { ...it, stored };
       fileNo++;
-      await writeManifest(dir, m);
+      await saveManifest();
       report(it.path, true);
     }
   };
   await Promise.all([worker(), worker()]);
-  await writeManifest(dir, m);
+  await saveManifest();
   return failed;
 }
 

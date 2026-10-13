@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Словарь</title>
 <meta name="theme-color" content="#f6f5f2">
 <link rel="manifest" href="manifest.webmanifest">
@@ -28,6 +28,7 @@
 </script>
 </head>
 <body>
+<div id="scrim"></div>
 <aside>
   <div class="brand"><img src="app-icon-192.png" alt="" width="30" height="30"> Словарь</div>
   <div id="dictlist"></div>
@@ -45,7 +46,7 @@
   <section>
     <h3>Оформление</h3>
     <div class="srow"><span>Тема</span><button class="chip" id="theme">◐ Тема</button></div>
-    <div class="srow"><span>Оформление <small>цвета и фон; светлая или тёмная тема выбирается отдельно</small></span></div>
+    <div class="srow"><span>Цвет и фон <small>светлая или тёмная тема выбирается отдельно</small></span></div>
     <div class="looks" id="looks"></div>
     <div class="srow"><span>Размер текста</span><span class="pair"><button class="chip" id="fsm" title="Меньше">A−</button><button class="chip" id="fsp" title="Больше">A+</button></span></div>
     <div class="srow"><span>Ширина панелей <small>панель словарей и область с текстом</small></span><button class="chip" id="resetsizes">Сбросить</button></div>
@@ -68,6 +69,7 @@
 <main>
   <div class="search">
     <div class="sbox">
+      <button type="button" class="menubtn" id="menubtn" aria-label="Словари и настройки" title="Словари"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
       <input id="q" autocomplete="off" spellcheck="false" placeholder="Слово…" disabled>
       <button type="button" id="modeAll" class="mode sub" hidden title="Фраза: слова рядом, как написано. Все слова: слова в любом порядке в одной статье (точную фразу заключите в «кавычки»)">Фраза</button>

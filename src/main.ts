@@ -6,7 +6,7 @@ import {
   type Entry,
 } from './storage/folder';
 import {
-  clearCloud, cloudEntries, cloudSupported, googleKey, hasBuiltinGoogleKey, isGoogle, listCloud, normalizeLink, planSync, setGoogleKey, syncCloud,
+  clearCloud, cloudCapabilities, cloudEntries, cloudSupported, googleKey, hasBuiltinGoogleKey, isGoogle, listCloud, normalizeLink, planSync, setGoogleKey, syncCloud,
   type CloudItem,
 } from './storage/cloud';
 import { assign, guessLang, loadLayout, move, newGroupId, saveLayout } from './ui/layout';
@@ -138,7 +138,7 @@ async function ingest(entries: Entry[], label: string) {
   $('#status').textContent = `Готово: ${n} из ${sources.length} словарей, ${r.total.toLocaleString('ru')} заголовков, ${(r.ms / 1000).toFixed(1)} с.`;
   q.disabled = false;
   q.placeholder = 'Слово…';
-  q.focus();
+  if (!touchUI) q.focus(); // на телефоне клавиатура сама не выезжает
   welcome();
   renderDicts();
   renderScope();
@@ -190,6 +190,7 @@ function renderScope() {
 
 /* ---------- поиск и подсказки ---------- */
 const q = $<HTMLInputElement>('#q'), sug = $('#sug'), out = $('#out');
+const touchUI = matchMedia('(hover: none) and (pointer: coarse)').matches; // телефон или планшет без мыши
 let cur: Hit[] = [], sel = -1, qSeq = 0;
 let recent: string[] = JSON.parse(store.get('recent', '[]'));
 
@@ -409,7 +410,7 @@ function cloudScreen(msg = '', busy = false) {
 /** Синхронизирует облачную папку с хранилищем браузера и загружает словари. */
 let cloudGen = 0; // номер запуска: устаревший запуск (экран уже сменился) тихо заканчивается
 async function openCloud(link: string) {
-  if (!cloudSupported()) { cloudScreen('Облако работает в Chrome и Edge: нужна запись в хранилище браузера.'); return; }
+  if (!cloudSupported()) { cloudScreen('В этом браузере нет нужного хранилища для облака. Откройте «Диагностику» в настройках и пришлите отчёт.'); return; }
   store.set(CLOUD_KEY, link);
   store.set('src', 'cloud');
   cloudAbort?.abort(); // прежний запуск (если был) прекращаем
@@ -700,12 +701,37 @@ async function report(): Promise<string> {
     L.push('', 'История загрузок:');
     for (const h of history) L.push(`  • ${h.at}: ${fmtMs(h.ms)}, ${h.total.toLocaleString('ru')} заголовков, из кэша ${h.cached}/построено ${h.built}${h.cold ? ' (после сброса кэша)' : ''}`);
   }
-  L.push('', `Браузер: ${navigator.userAgent}`);
+  L.push('', ...(await capabilityLines()));
   return L.join('\n');
 }
 
+/** Что умеет этот браузер (для облака, установки и хранилища). Полезно, когда что-то не работает на телефоне. */
+async function capabilityLines(): Promise<string[]> {
+  const c = cloudCapabilities();
+  const yn = (b: boolean) => (b ? 'да' : 'нет');
+  let quota = '?';
+  let persisted = '?';
+  try { const e = await navigator.storage.estimate(); quota = `занято ${Math.round((e.usage ?? 0) / 1048576)} МБ из ${Math.round((e.quota ?? 0) / 1048576)} МБ`; } catch { /* нет сведений */ }
+  try { persisted = yn(await navigator.storage.persisted()); } catch { /* нет сведений */ }
+  const standalone = matchMedia('(display-mode: standalone)').matches || (navigator as unknown as { standalone?: boolean }).standalone === true;
+  return [
+    'Возможности браузера:',
+    `  память сайта (OPFS): ${yn(c.opfs)}; запись напрямую: ${yn(c.createWritable)}; запасная запись через рабочий поток: ${yn(c.syncAccess)}`,
+    `  облако поддерживается: ${yn(cloudSupported())}; выбор папки на диске: ${yn(canPick())}`,
+    `  хранилище сайта: ${quota}; защищено от автоочистки: ${persisted}`,
+    `  как приложение (с экрана «Домой»): ${yn(standalone)}; служба кэширования: ${yn('serviceWorker' in navigator)}; распаковка (DecompressionStream): ${yn('DecompressionStream' in window)}`,
+    `  экран: ${innerWidth}×${innerHeight}, плотность ${devicePixelRatio}, касание: ${yn(touchUI)}`,
+    `  браузер: ${navigator.userAgent}`,
+  ];
+}
+
 async function showDiag() {
-  if (!sources.length) { out.innerHTML = '<div class="empty">Сначала подключите папку со словарями.</div>'; return; }
+  if (!sources.length) {
+    const lines = ['Словари ещё не подключены.', '', ...(await capabilityLines())].join('\n');
+    out.innerHTML = `<div class="result"><h1>Диагностика</h1><p class="sub">Если что-то не получается, скопируйте этот отчёт и пришлите.</p><pre class="diag">${esc(lines)}</pre><button class="btn" id="copyd">Скопировать отчёт</button></div>`;
+    $('#copyd').onclick = async () => { try { await navigator.clipboard.writeText(lines); $('#copyd').textContent = 'Скопировано'; } catch { /* нет доступа к буферу */ } };
+    return;
+  }
   const text = await report();
   out.innerHTML = `<div class="result"><h1>Диагностика</h1><p class="sub">Для проверки на всей библиотеке: нажмите «Сбросить кэш…», дождитесь строки «Готово» и скопируйте отчёт.</p>
     <section class="card"><div class="body" style="padding:18px 22px"><pre class="diag">${esc(text)}</pre>
@@ -736,7 +762,7 @@ document.addEventListener('keydown', (e) => {
 });
 /* курсор сам возвращается в строку поиска: не надо листать наверх */
 const focusSearch = () => { if (!q.disabled && document.activeElement !== q) q.focus({ preventScroll: true }); };
-const INTERACTIVE = 'a,button,input,textarea,select,label,summary,[data-w],[data-snd],[data-scope],[data-del],[data-back],.fthit,.mode,#modeAll,#dictlist .dict,.ghead,.card>header,.sw,.btn,.chip,#resizer,.mrz,.sug,.tips,.recent button';
+const INTERACTIVE = '#scrim,a,button,input,textarea,select,label,summary,[data-w],[data-snd],[data-scope],[data-del],[data-back],.fthit,.mode,#modeAll,#dictlist .dict,.ghead,.card>header,.sw,.btn,.chip,#resizer,.mrz,.sug,.tips,.recent button';
 document.addEventListener('click', (e) => {
   if ((e as PointerEvent).pointerType === 'touch') return; // на сенсорном экране не вызываем клавиатуру
   if (window.getSelection()?.toString()) return; // человек выделяет текст
@@ -797,6 +823,7 @@ function jumpToDict(i: number) {
   const card = host?.closest<HTMLElement>('.card');
   if (!card) return;
   useDict(i, true);
+  closeDrawer();
   card.classList.remove('closed');
   window.scrollTo({ top: Math.max(0, card.getBoundingClientRect().top + window.scrollY - 14) });
   card.classList.remove('flash');
@@ -1015,11 +1042,18 @@ function setLook(id: string) {
 $('#looks').innerHTML = LOOKS.map((l) => `<button type="button" class="look" data-look="${l.id}"><span class="pv" style="background:${l.grad}"><i style="background:${l.dot}"></i><u></u></span><b>${esc(l.name)}</b></button>`).join('');
 $('#looks').addEventListener('click', (e) => { const b = (e.target as HTMLElement).closest<HTMLElement>('.look'); if (b) setLook(b.dataset.look!); });
 setLook(lookId);
-let fs = +store.get('fs', '19');
+let fs = +store.get('fs', touchUI ? '17' : '19');
 function setFs(v: number) { fs = Math.max(14, Math.min(34, v)); document.documentElement.style.setProperty('--fs', fs + 'px'); store.set('fs', String(fs)); }
 $('#fsm').onclick = () => setFs(fs - 2);
 $('#fsp').onclick = () => setFs(fs + 2);
 setFs(fs);
+
+/* ---------- шторка со словарями (телефон) ---------- */
+const closeDrawer = () => document.body.classList.remove('drawer');
+$('#menubtn').onclick = () => document.body.classList.toggle('drawer');
+$('#scrim').onclick = closeDrawer;
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrawer(); });
+addEventListener('resize', () => { if (innerWidth > 820) closeDrawer(); });
 
 /* ---------- окно настроек ---------- */
 const settings = $<HTMLDialogElement>('#settings');
@@ -1030,6 +1064,7 @@ function usageNote() {
 /** Перестраивает открытую статью, чтобы новый порядок карточек был виден сразу. */
 function reshow() { if (shownWord && out.querySelector('.result')) void show(shownWord); }
 $('#settingsbtn').onclick = () => {
+  closeDrawer();
   usageNote();
   $<HTMLInputElement>('#rank').checked = rankOn;
   settings.showModal();
