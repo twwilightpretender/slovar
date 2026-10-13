@@ -5,6 +5,7 @@ import {
   askAccess, canPick, fromDrop, fromFileList, groupSources, hasAccess, loadHandle, pickFolder, saveHandle, walkHandle,
   type Entry,
 } from './storage/folder';
+import { clearCloud, cloudEntries, cloudSupported, listCloud, normalizeLink, planSync, syncCloud, type CloudItem } from './storage/cloud';
 import { assign, guessLang, loadLayout, move, newGroupId, saveLayout } from './ui/layout';
 import ART_CSS from './ui/article.css?inline';
 import { buildSearchRegex, parseTerms } from './core/fold';
@@ -278,6 +279,8 @@ function welcome() {
 
 async function start() {
   q.placeholder = 'Сначала выберите папку со словарями';
+  const cl = store.get(CLOUD_KEY);
+  if (store.get('src') === 'cloud' && cl && cloudSupported()) { await openCloud(cl); return; }
   const h = await loadHandle();
   if (h) {
     if (await hasAccess(h)) { await openHandle(h); return; }
@@ -296,11 +299,13 @@ function dropScreen() {
     ${canPick() ? '<button class="btn" id="pick">Выбрать папку…</button>' : ''}
     <button class="btn ${canPick() ? 'alt' : ''}" id="pick2">${canPick() ? 'Другой способ' : 'Выбрать папку…'}</button>
     <p>Или перетащите папку со словарями сюда.</p>
+    <p><button class="btn alt" id="cloudbtn" style="margin-top:6px">☁ Подключить из облака по ссылке</button></p>
     ${canPick() ? '' : '<p>Этот браузер не умеет запоминать папку: придётся выбирать её при каждом запуске. В Chrome и Edge этого не нужно.</p>'}
     ${import.meta.env.DEV ? `<div class="devbox">Разработка: <input id="devf" value="${esc(new URLSearchParams(location.search).get('dev') ?? 'GrandRobert')}" size="30"> <button class="btn alt" id="dev" style="margin:0">Загрузить из F:\\словари</button></div>` : ''}
   </div>`;
   const pk = document.getElementById('pick');
   if (pk) pk.onclick = pick;
+  $('#cloudbtn').onclick = () => cloudScreen();
   $('#pick2').onclick = () => $<HTMLInputElement>('#fallback').click();
   if (import.meta.env.DEV) {
     $('#dev').onclick = () => devLoad($<HTMLInputElement>('#devf').value);
@@ -311,6 +316,7 @@ function dropScreen() {
 async function pick() {
   try {
     const h = await pickFolder();
+    store.set('src', 'dir');
     await saveHandle(h);
     await openHandle(h);
   } catch (e) {
@@ -333,6 +339,97 @@ async function devLoad(filter: string) {
     entries.push({ path: x.p, file: new File([blob], x.p.split('/').pop()!, { lastModified: x.mtime }) });
   }
   await ingest(entries, 'dev: ' + (filter || 'всё'));
+}
+
+/* ---------- словари из облака ---------- */
+const CLOUD_KEY = 'cloudlink';
+const mb = (n: number) => (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' МБ';
+let cloudAbort: AbortController | null = null;
+
+function cloudScreen(msg = '', busy = false) {
+  const saved = store.get(CLOUD_KEY);
+  out.innerHTML = `<div class="drop cloud"><h2>Словари из облака</h2>
+    <p>Вставьте ссылку на папку Яндекс.Диска (доступ «по ссылке»). Нужные файлы скачаются один раз в память этого браузера, дальше словари работают быстро и без интернета.</p>
+    <input id="clink" class="linkin" placeholder="https://disk.yandex.ru/d/…" value="${esc(saved)}" spellcheck="false" ${busy ? 'disabled' : ''}>
+    <div><button class="btn" id="cgo" ${busy ? 'disabled' : ''}>Подключить</button><button class="btn alt" id="cback">${busy ? 'Отмена' : 'Назад'}</button></div>
+    ${msg ? `<p class="cerr">${esc(msg)}</p>` : ''}
+    <div id="cprog"></div>
+    ${saved && !busy ? '<p><button class="btn alt" id="cclear" style="margin-top:22px">Удалить скачанное из браузера</button></p>' : ''}
+  </div>`;
+  $('#cback').onclick = () => { if (busy) cloudAbort?.abort(); else if (ready) welcome(); else dropScreen(); };
+  const go = document.getElementById('cgo');
+  if (go) go.onclick = () => {
+    const link = normalizeLink($<HTMLInputElement>('#clink').value);
+    if (!link) { cloudScreen('Это не похоже на ссылку Яндекс.Диска (нужна вида disk.yandex.ru/d/…).'); return; }
+    openCloud(link);
+  };
+  const cc = document.getElementById('cclear');
+  if (cc) cc.onclick = async () => {
+    if (!confirm('Удалить скачанные словари из памяти браузера? Их можно будет скачать снова по ссылке.')) return;
+    await clearCloud(saved);
+    store.set(CLOUD_KEY, '');
+    store.set('src', 'dir');
+    location.reload();
+  };
+}
+
+/** Синхронизирует облачную папку с хранилищем браузера и загружает словари. */
+async function openCloud(link: string) {
+  if (!cloudSupported()) { cloudScreen('Облако работает в Chrome и Edge: нужна запись в хранилище браузера.'); return; }
+  store.set(CLOUD_KEY, link);
+  store.set('src', 'cloud');
+  cloudAbort = new AbortController();
+  const signal = cloudAbort.signal;
+  cloudScreen('', true);
+  const prog = $('#cprog');
+  prog.innerHTML = '<p>Получаю список файлов…</p>';
+  q.placeholder = 'Подключаю облако…';
+  const fromCache = async (why: string) => {
+    const have = await cloudEntries(link);
+    if (!have) return false;
+    await ingest(have.entries, '☁ ' + have.name);
+    if (why) $('#status').textContent = why + ' ' + $('#status').textContent;
+    return true;
+  };
+  let remote: { name: string; items: CloudItem[] };
+  try {
+    remote = await listCloud(link, signal);
+  } catch (e) {
+    if (await fromCache('Нет связи с облаком, использую скачанное.')) return;
+    cloudScreen(signal.aborted ? '' : (e as Error).message || String(e));
+    return;
+  }
+  if (!remote.items.length) { cloudScreen('В этой папке не нашлось словарей (нужны файлы .mdx, .dsl, .ifo, .slob, .gls).'); return; }
+  const plan = await planSync(link, remote);
+  let failed: { path: string; message: string }[] = [];
+  if (plan.todo.length || plan.gone.length) {
+    const est = await navigator.storage.estimate?.();
+    if (est?.quota && est.usage !== undefined && est.quota - est.usage < plan.bytes * 1.1) {
+      cloudScreen(`Не хватает места в браузере: нужно ${mb(plan.bytes)}, свободно ${mb(Math.max(0, est.quota - est.usage))}.`);
+      return;
+    }
+    prog.innerHTML = `<p>Нужно скачать: ${plan.todo.length} файл(ов), ${mb(plan.bytes)}</p><div class="bar"><i id="cbar"></i></div><p id="ctxt" class="cfile"></p>`;
+    try {
+      failed = await syncCloud(link, remote, (p) => {
+        $('#cbar').style.width = (p.total ? Math.min(100, (p.done / p.total) * 100) : 100).toFixed(1) + '%';
+        $('#ctxt').textContent = `${mb(p.done)} из ${mb(p.total)} · готово файлов: ${p.fileNo} из ${p.files} · ${p.file.slice(p.file.lastIndexOf('/') + 1)}`;
+      }, signal);
+    } catch (e) {
+      if (signal.aborted) { if (await fromCache('Обновление отменено.')) return; cloudScreen(); return; }
+      cloudScreen('Ошибка при скачивании: ' + ((e as Error).message || String(e)));
+      return;
+    }
+  }
+  const have = await cloudEntries(link);
+  if (!have) {
+    cloudScreen(failed.length ? 'Не удалось скачать ни одного файла: ' + failed.map((f) => f.path).join(', ') : 'Не удалось прочитать скачанные файлы.');
+    return;
+  }
+  await ingest(have.entries, '☁ ' + have.name);
+  if (failed.length) {
+    const names = failed.map((f) => f.path.slice(f.path.lastIndexOf('/') + 1));
+    $('#status').textContent = `⚠ Не скачано (${failed.length}): ${names.join(', ')}. Яндекс.Диск не отдал файл. Повторите через «☁ Облако». ` + $('#status').textContent;
+  }
 }
 
 /* ---------- поиск по тексту статей ---------- */
@@ -716,6 +813,7 @@ document.addEventListener('click', (e) => {
 document.body.insertAdjacentHTML('beforeend', '<input type="file" id="fallback" webkitdirectory multiple hidden>');
 $<HTMLInputElement>('#fallback').addEventListener('change', async (e) => {
   const f = (e.target as HTMLInputElement).files;
+  if (f?.length) store.set('src', 'dir');
   if (f?.length) await ingest(fromFileList(f), (f[0] as File & { webkitRelativePath: string }).webkitRelativePath.split('/')[0]);
 });
 const hasFiles = (e: DragEvent) => !!e.dataTransfer?.types.includes('Files');
@@ -725,10 +823,12 @@ addEventListener('drop', async (e) => {
   if (!hasFiles(e)) return; // перетаскивание словарей внутри списка — не загрузка папки
   e.preventDefault();
   const entries = await fromDrop(e.dataTransfer!);
+  store.set('src', 'dir');
   await ingest(entries, 'перетащенная папка');
 });
 $('#diag').onclick = showDiag;
 $('#folder').onclick = () => { if (canPick()) pick(); else dropScreen(); };
+$('#cloud').onclick = () => cloudScreen();
 
 /* ---------- ширина боковой панели ---------- */
 const SIDE = { min: 220, max: 640, def: 270 };

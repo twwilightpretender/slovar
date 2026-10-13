@@ -8,6 +8,8 @@ export interface Entry {
 const RES = /\.(css|png|jpe?g|gif|bmp|svg|webp|ico|ttf|otf|woff2?|mp3|wav|ogg|spx|opus)$/i; // ресурсы статей рядом со словарём
 const WANTED = new RegExp(/\.(mdx|mdd|dsl|dz|gz|ifo|idx|dict|syn|slob|bgl|gls|zip)$/i.source + '|' + RES.source, 'i');
 
+export const isWanted = (name: string) => WANTED.test(name);
+
 /* ---------- запомненная папка (только Chrome/Edge) ---------- */
 function kv(): Promise<IDBDatabase> {
   return new Promise((ok, no) => {
