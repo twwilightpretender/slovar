@@ -1,19 +1,24 @@
 import { isWanted, type Entry } from './folder';
 
 /*
- * Словари из облака (Яндекс.Диск, публичная ссылка на папку).
+ * Словари из облака (Яндекс.Диск и Google Диск, публичная ссылка на папку).
  * Файлы один раз скачиваются в хранилище браузера (OPFS) и дальше читаются как обычные:
  * быстро, без сети, индекс строится так же, как для папки на диске.
  * Серверы Яндекса отдают данные браузеру с любого сайта (CORS: *) и умеют докачку по Range.
+ * Google Диск: нужен бесплатный ключ API (Drive API v3), ограниченный по адресу сайта.
  */
 
 const API = 'https://cloud-api.yandex.net/v1/disk/public/resources';
+const GAPI = 'https://www.googleapis.com/drive/v3/files';
+/** Ключ API Google Drive (публичный, ограничен по адресу сайта в Google Cloud Console). Можно переопределить в настройках облака. */
+const GOOGLE_KEY = '';
 
 export interface CloudItem {
   path: string; // относительно папки по ссылке, через /
   size: number;
   md5: string;
   modified: string;
+  id?: string; // Google: идентификатор файла
 }
 export interface Progress {
   done: number; // скачано байт
@@ -30,15 +35,32 @@ interface Manifest {
 
 export const cloudSupported = () => !!(navigator.storage && 'getDirectory' in navigator.storage && 'createWritable' in FileSystemFileHandle.prototype);
 
-/** Ссылка вида https://disk.yandex.ru/d/XXXX (также disk.360.yandex.ru, yadi.sk) → её каноническая форма или null. */
+/**
+ * Ссылка на папку Яндекс.Диска (disk.yandex.ru/d/XXXX, disk.360.yandex.ru, yadi.sk)
+ * или Google Диска (drive.google.com/drive/folders/XXXX) → каноническая форма или null.
+ */
 export function normalizeLink(raw: string): string | null {
   let u: URL;
   try { u = new URL(raw.trim()); } catch { return null; }
-  if (!/^(disk(\.360)?\.yandex\.[a-z.]+|yadi\.sk)$/i.test(u.hostname)) return null;
-  const m = u.pathname.match(/^\/([di])\/([\w-]+)/);
-  return m ? `https://${u.hostname}/${m[1]}/${m[2]}` : null;
+  if (/^(disk(\.360)?\.yandex\.[a-z.]+|yadi\.sk)$/i.test(u.hostname)) {
+    const m = u.pathname.match(/^\/([di])\/([\w-]+)/);
+    return m ? `https://${u.hostname}/${m[1]}/${m[2]}` : null;
+  }
+  if (/^(drive|docs)\.google\.com$/i.test(u.hostname)) {
+    const m = u.pathname.match(/\/folders\/([\w-]+)/) ?? ('?' + u.searchParams.toString()).match(/[?&]id=([\w-]+)/);
+    return m ? `https://drive.google.com/drive/folders/${m[1]}` : null;
+  }
+  return null;
 }
-const linkId = (link: string) => link.replace(/^.*\/([di])\/([\w-]+).*$/, '$1_$2');
+export const isGoogle = (link: string) => link.includes('drive.google.com');
+const linkId = (link: string) => isGoogle(link) ? 'g_' + link.replace(/^.*\/folders\//, '') : link.replace(/^.*\/([di])\/([\w-]+).*$/, '$1_$2');
+
+/* ---------- ключ Google ---------- */
+export const googleKey = (): string => {
+  try { return localStorage.getItem('gkey') || GOOGLE_KEY; } catch { return GOOGLE_KEY; }
+};
+export const setGoogleKey = (k: string) => { try { localStorage.setItem('gkey', k.trim()); } catch { /* ok */ } };
+export const hasBuiltinGoogleKey = !!GOOGLE_KEY;
 
 /* ---------- список файлов ---------- */
 async function apiJson(url: string, signal?: AbortSignal): Promise<any> {
@@ -49,8 +71,51 @@ async function apiJson(url: string, signal?: AbortSignal): Promise<any> {
   return r.json();
 }
 
+async function gJson(url: string, signal?: AbortSignal): Promise<any> {
+  const r = await fetch(url, { signal });
+  if (r.ok) return r.json();
+  let reason = '';
+  try { reason = (await r.json())?.error?.errors?.[0]?.reason ?? ''; } catch { /* без тела */ }
+  if (r.status === 404) throw new Error('Папка не найдена или у неё закрыт доступ по ссылке («Все, у кого есть ссылка» → «Читатель»).');
+  if (r.status === 400 && /keyInvalid/i.test(reason)) throw new Error('Ключ Google API не подходит. Проверьте, что он скопирован целиком.');
+  if (r.status === 403 && /referer|ipRefererBlocked/i.test(reason)) throw new Error('Ключ Google API не разрешён для этого адреса сайта (настройте ограничения по сайтам).');
+  if (r.status === 403 && /accessNotConfigured|SERVICE_DISABLED/i.test(reason)) throw new Error('В проекте Google Cloud не включён Google Drive API.');
+  if (r.status === 403 && /rateLimit|quota/i.test(reason)) throw new Error('Google просит подождать (лимит запросов). Повторите позже.');
+  throw new Error(`Google Диск ответил ошибкой ${r.status}${reason ? ' (' + reason + ')' : ''}`);
+}
+
+async function listGoogle(link: string, signal?: AbortSignal): Promise<{ name: string; items: CloudItem[] }> {
+  const key = googleKey();
+  if (!key) throw new Error('Для Google Диска нужен ключ API (см. настройки облака).');
+  const rootId = link.replace(/^.*\/folders\//, '');
+  const root = await gJson(`${GAPI}/${rootId}?fields=name,mimeType&supportsAllDrives=true&key=${encodeURIComponent(key)}`, signal);
+  const items: CloudItem[] = [];
+  const walk = async (id: string, rel: string): Promise<void> => {
+    for (let token = ''; ; ) {
+      const q = new URLSearchParams({
+        q: `'${id}' in parents and trashed=false`,
+        fields: 'nextPageToken,files(id,name,mimeType,size,md5Checksum,modifiedTime)',
+        pageSize: '1000', supportsAllDrives: 'true', includeItemsFromAllDrives: 'true', key,
+      });
+      if (token) q.set('pageToken', token);
+      const d = await gJson(`${GAPI}?${q}`, signal);
+      for (const f of d.files ?? []) {
+        const p = rel ? rel + '/' + f.name : f.name;
+        if (f.mimeType === 'application/vnd.google-apps.folder') await walk(f.id, p);
+        else if (isWanted(f.name)) items.push({ path: p, size: Number(f.size ?? 0), md5: f.md5Checksum ?? '', modified: f.modifiedTime ?? '', id: f.id });
+      }
+      token = d.nextPageToken ?? '';
+      if (!token) break;
+    }
+  };
+  if (root.mimeType !== 'application/vnd.google-apps.folder') throw new Error('Ссылка ведёт не на папку. Вставьте ссылку на папку со словарями.');
+  await walk(rootId, '');
+  return { name: root.name ?? '', items };
+}
+
 /** Все нужные файлы папки (рекурсивно); название папки. */
 export async function listCloud(link: string, signal?: AbortSignal): Promise<{ name: string; items: CloudItem[] }> {
+  if (isGoogle(link)) return listGoogle(link, signal);
   const items: CloudItem[] = [];
   let rootName = '';
   const walk = async (path: string | null, rel: string): Promise<void> => {
@@ -105,8 +170,9 @@ function storedName(path: string, n: number): string {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function downloadHref(link: string, path: string, signal?: AbortSignal): Promise<string> {
-  const q = new URLSearchParams({ public_key: link, path: '/' + path });
+async function downloadHref(link: string, item: CloudItem, signal?: AbortSignal): Promise<string> {
+  if (isGoogle(link)) return `${GAPI}/${item.id}?alt=media&supportsAllDrives=true&key=${encodeURIComponent(googleKey())}`;
+  const q = new URLSearchParams({ public_key: link, path: '/' + item.path });
   return (await apiJson(`${API}/download?${q}`, signal)).href;
 }
 
@@ -127,7 +193,7 @@ async function fetchToFile(
       let timer = setTimeout(() => att.abort(), STALL);
       const bump = () => { clearTimeout(timer); timer = setTimeout(() => att.abort(), STALL); };
       try {
-        const href = await downloadHref(link, item.path, att.signal);
+        const href = await downloadHref(link, item, att.signal);
         bump();
         const res = await fetch(href, written ? { headers: { Range: `bytes=${written}-` }, signal: att.signal } : { signal: att.signal });
         bump();

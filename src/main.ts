@@ -5,7 +5,10 @@ import {
   askAccess, canPick, fromDrop, fromFileList, groupSources, hasAccess, loadHandle, pickFolder, saveHandle, walkHandle,
   type Entry,
 } from './storage/folder';
-import { clearCloud, cloudEntries, cloudSupported, listCloud, normalizeLink, planSync, syncCloud, type CloudItem } from './storage/cloud';
+import {
+  clearCloud, cloudEntries, cloudSupported, googleKey, hasBuiltinGoogleKey, isGoogle, listCloud, normalizeLink, planSync, setGoogleKey, syncCloud,
+  type CloudItem,
+} from './storage/cloud';
 import { assign, guessLang, loadLayout, move, newGroupId, saveLayout } from './ui/layout';
 import ART_CSS from './ui/article.css?inline';
 import { buildSearchRegex, parseTerms } from './core/fold';
@@ -349,8 +352,9 @@ let cloudAbort: AbortController | null = null;
 function cloudScreen(msg = '', busy = false) {
   const saved = store.get(CLOUD_KEY);
   out.innerHTML = `<div class="drop cloud"><h2>Словари из облака</h2>
-    <p>Вставьте ссылку на папку Яндекс.Диска (доступ «по ссылке»). Нужные файлы скачаются один раз в память этого браузера, дальше словари работают быстро и без интернета.</p>
-    <input id="clink" class="linkin" placeholder="https://disk.yandex.ru/d/…" value="${esc(saved)}" spellcheck="false" ${busy ? 'disabled' : ''}>
+    <p>Вставьте ссылку на папку Яндекс.Диска или Google Диска (доступ «по ссылке»). Нужные файлы скачаются один раз в память этого браузера, дальше словари работают быстро и без интернета.</p>
+    <input id="clink" class="linkin" placeholder="https://disk.yandex.ru/d/…  или  https://drive.google.com/drive/folders/…" value="${esc(saved)}" spellcheck="false" ${busy ? 'disabled' : ''}>
+    ${hasBuiltinGoogleKey ? '' : `<details class="gk" ${googleKey() ? '' : 'open'}><summary>Ключ для Google Диска</summary><input id="gkey" class="linkin" placeholder="ключ Google API (только для ссылок Google)" value="${esc(googleKey())}" spellcheck="false" ${busy ? 'disabled' : ''}></details>`}
     <div><button class="btn" id="cgo" ${busy ? 'disabled' : ''}>Подключить</button><button class="btn alt" id="cback">${busy ? 'Отмена' : 'Назад'}</button></div>
     ${msg ? `<p class="cerr">${esc(msg)}</p>` : ''}
     <div id="cprog"></div>
@@ -360,7 +364,10 @@ function cloudScreen(msg = '', busy = false) {
   const go = document.getElementById('cgo');
   if (go) go.onclick = () => {
     const link = normalizeLink($<HTMLInputElement>('#clink').value);
-    if (!link) { cloudScreen('Это не похоже на ссылку Яндекс.Диска (нужна вида disk.yandex.ru/d/…).'); return; }
+    if (!link) { cloudScreen('Это не похоже на ссылку на папку Яндекс.Диска (disk.yandex.ru/d/…) или Google Диска (drive.google.com/drive/folders/…).'); return; }
+    const gk = document.getElementById('gkey') as HTMLInputElement | null;
+    if (gk && gk.value.trim()) setGoogleKey(gk.value);
+    if (isGoogle(link) && !googleKey()) { cloudScreen('Для Google Диска нужен ключ API: раскройте «Ключ для Google Диска» и вставьте его.'); return; }
     openCloud(link);
   };
   const cc = document.getElementById('cclear');
@@ -428,7 +435,7 @@ async function openCloud(link: string) {
   await ingest(have.entries, '☁ ' + have.name);
   if (failed.length) {
     const names = failed.map((f) => f.path.slice(f.path.lastIndexOf('/') + 1));
-    $('#status').textContent = `⚠ Не скачано (${failed.length}): ${names.join(', ')}. Яндекс.Диск не отдал файл. Повторите через «☁ Облако». ` + $('#status').textContent;
+    $('#status').textContent = `⚠ Не скачано (${failed.length}): ${names.join(', ')}. Облако не отдало файл. Повторите через «☁ Облако». ` + $('#status').textContent;
   }
 }
 
