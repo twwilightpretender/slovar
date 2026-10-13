@@ -76,13 +76,29 @@ function dictName(i: number): string {
   return t && !/^title\b/i.test(t) && t.length < 60 ? t : base;
 }
 
+/* частота использования словарей: открытие карточки, переход из списка, щелчок внутри статьи */
+const usage: Record<string, number> = (() => { try { return JSON.parse(store.get('usage', '{}')); } catch { return {}; } })();
+let rankOn = store.get('rank') === '1';
+const usedInView = new Set<number>(); // в одной показанной статье словарь засчитывается один раз
+function useDict(i: number, once = false) {
+  if (once) { if (usedInView.has(i)) return; usedInView.add(i); }
+  const id = sources[i]?.id;
+  if (!id) return;
+  usage[id] = (usage[id] ?? 0) + 1;
+  store.set('usage', JSON.stringify(usage));
+}
+
 /** Словари, участвующие в поиске: отмечены галочкой и входят в выбранную группу. */
 const mask = () => enabled.map((on, i) => on && (!lay.scope || lay.of[sources[i].id] === lay.scope));
 /** Порядок показа словарей: по группам, внутри группы — как расставил пользователь. */
 function displayOrder(): number[] {
   const idx = new Map(sources.map((s, i) => [s.id, i]));
   const out: number[] = [];
-  for (const g of lay.groups) for (const id of lay.order) if (lay.of[id] === g.id && idx.has(id)) out.push(idx.get(id)!);
+  for (const g of lay.groups) {
+    const ids = lay.order.filter((id) => lay.of[id] === g.id && idx.has(id));
+    if (rankOn) ids.sort((a, b) => (usage[b] ?? 0) - (usage[a] ?? 0)); // сортировка устойчива: при равенстве остаётся ручной порядок
+    for (const id of ids) out.push(idx.get(id)!);
+  }
   for (let i = 0; i < sources.length; i++) if (!out.includes(i)) out.push(i);
   return out;
 }
@@ -219,7 +235,9 @@ function adaptAll() {
   });
 }
 
+let shownWord = '';
 async function show(h: string) {
+  shownWord = h;
   cancelFt();
   clearHighlights();
   q.value = ''; // слово найдено — строка поиска готова к следующему вводу (само слово видно в заголовке статьи)
@@ -233,6 +251,7 @@ async function show(h: string) {
   let parts: ArticlePart[] = [];
   try { parts = (await call<Extract<Res, { t: 'article' }>>({ t: 'article', h, enabled: mask() })).parts; }
   catch (e) { out.innerHTML = `<div class="empty">Не удалось прочитать статью: ${esc(String(e))}</div>`; return; }
+  usedInView.clear();
   const pos = new Map(displayOrder().map((d, n) => [d, n]));
   parts.sort((a, b) => pos.get(a.dict)! - pos.get(b.dict)!);
 
@@ -720,6 +739,8 @@ q.addEventListener('focus', () => { if (q.value.trim()) renderSug(); });
 q.addEventListener('blur', () => setTimeout(() => sug.classList.remove('open'), 120));
 document.addEventListener('click', (e) => {
   const t = (e.composedPath()[0] ?? e.target) as HTMLElement; // клики внутри Shadow DOM карточек
+  const inHost = (t.getRootNode() as ShadowRoot).host as HTMLElement | undefined;
+  if (inHost?.dataset?.dict !== undefined && !window.getSelection()?.toString()) useDict(+inHost.dataset.dict, true); // щелчок внутри статьи словаря
   const sn = t.closest?.<HTMLElement>('[data-snd]');
   if (sn) {
     const dict = +((sn.getRootNode() as ShadowRoot).host as HTMLElement | undefined)?.dataset.dict!;
@@ -731,7 +752,12 @@ document.addEventListener('click', (e) => {
   const tq = t.closest?.<HTMLElement>('[data-q]');
   if (tq) { q.value = tq.dataset.q!; q.focus(); renderSug(); return; }
   const h = t.closest?.('.card>header');
-  if (h) h.parentElement!.classList.toggle('closed');
+  if (h) {
+    const card = h.parentElement!;
+    card.classList.toggle('closed');
+    const d = (card.querySelector('.body') as HTMLElement | null)?.dataset.dict;
+    if (!card.classList.contains('closed') && d !== undefined) useDict(+d, true); // раскрыл карточку = интересуется этим словарём
+  }
 });
 $('#dictlist').addEventListener('change', (e) => {
   const i = +(e.target as HTMLInputElement).dataset.i!;
@@ -750,6 +776,7 @@ function jumpToDict(i: number) {
   const host = out.querySelector<HTMLElement>(`.card .body[data-dict="${i}"]`);
   const card = host?.closest<HTMLElement>('.card');
   if (!card) return;
+  useDict(i, true);
   card.classList.remove('closed');
   window.scrollTo({ top: Math.max(0, card.getBoundingClientRect().top + window.scrollY - 14) });
   card.classList.remove('flash');
@@ -949,6 +976,35 @@ function setFs(v: number) { fs = Math.max(14, Math.min(34, v)); document.documen
 $('#fsm').onclick = () => setFs(fs - 2);
 $('#fsp').onclick = () => setFs(fs + 2);
 setFs(fs);
+
+/* ---------- окно настроек ---------- */
+const settings = $<HTMLDialogElement>('#settings');
+function usageNote() {
+  const n = Object.values(usage).reduce((s, v) => s + v, 0);
+  $('#usagenote').textContent = n ? `Учтено обращений: ${n}` : 'Пока пусто. Считаются раскрытия карточек, переходы из списка слева и щелчки внутри статей.';
+}
+/** Перестраивает открытую статью, чтобы новый порядок карточек был виден сразу. */
+function reshow() { if (shownWord && out.querySelector('.result')) void show(shownWord); }
+$('#settingsbtn').onclick = () => {
+  usageNote();
+  $<HTMLInputElement>('#rank').checked = rankOn;
+  settings.showModal();
+};
+$('#setclose').onclick = () => settings.close();
+settings.addEventListener('click', (e) => { if (e.target === settings) settings.close(); }); // щелчок по затемнённому фону
+for (const id of ['#folder', '#cloud', '#diag']) $(id).addEventListener('click', () => settings.close()); // они открывают свои экраны
+$('#rank').addEventListener('change', (e) => {
+  rankOn = (e.target as HTMLInputElement).checked;
+  store.set('rank', rankOn ? '1' : '');
+  reshow();
+});
+$('#resetusage').onclick = () => {
+  for (const k of Object.keys(usage)) delete usage[k];
+  store.set('usage', '{}');
+  usageNote();
+  if (rankOn) reshow();
+};
+$('#resetsizes').onclick = () => { setSide(SIDE.def); setMain(MAIN.def); };
 
 // служба кэширования только в собранной версии (в разработке мешает перезагрузке)
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {

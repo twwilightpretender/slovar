@@ -22,15 +22,30 @@
   <div id="dictlist"></div>
   <div class="status" id="status"></div>
   <div class="side-foot">
-    <button class="chip" id="theme">◐ Тема</button>
-    <button class="chip" id="style">▦ Вид</button>
-    <button class="chip" id="fsm" title="Меньше">A−</button>
-    <button class="chip" id="fsp" title="Больше">A+</button>
-    <button class="chip" id="folder" title="Выбрать другую папку со словарями">📁 Папка</button>
-    <button class="chip" id="cloud" title="Словари из облака по ссылке (Яндекс.Диск)">☁ Облако</button>
-    <button class="chip" id="diag" title="Время загрузки, память, кэш, проблемные словари">🩺 Диагностика</button>
+    <button class="chip" id="settingsbtn" title="Настройки"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> Настройки</button>
   </div>
 </aside>
+<dialog id="settings" aria-labelledby="settitle">
+  <div class="sethead"><h2 id="settitle">Настройки</h2><button class="chip" id="setclose" title="Закрыть (Esc)">✕</button></div>
+  <section>
+    <h3>Оформление</h3>
+    <div class="srow"><span>Тема</span><button class="chip" id="theme">◐ Тема</button></div>
+    <div class="srow"><span>Вид</span><button class="chip" id="style">▦ Вид</button></div>
+    <div class="srow"><span>Размер текста</span><span class="pair"><button class="chip" id="fsm" title="Меньше">A−</button><button class="chip" id="fsp" title="Больше">A+</button></span></div>
+    <div class="srow"><span>Ширина панелей <small>панель словарей и область с текстом</small></span><button class="chip" id="resetsizes">Сбросить</button></div>
+  </section>
+  <section>
+    <h3>Словари</h3>
+    <div class="srow"><span>Папка на компьютере <small>выбрать другую папку со словарями</small></span><button class="chip" id="folder">📁 Выбрать</button></div>
+    <div class="srow"><span>Облако <small>Яндекс.Диск или Google Диск по ссылке</small></span><button class="chip" id="cloud">☁ Подключить</button></div>
+    <div class="srow"><span>Ранжировать по частоте использования <small>в статье выше идут словари, которыми вы пользуетесь чаще (по группам)</small></span><label class="sw"><input type="checkbox" id="rank"><span></span></label></div>
+    <div class="srow"><span>Статистика использования <small id="usagenote"></small></span><button class="chip" id="resetusage">Сбросить</button></div>
+  </section>
+  <section>
+    <h3>Служебное</h3>
+    <div class="srow"><span>Диагностика <small>время загрузки, память, кэш, проблемные словари</small></span><button class="chip" id="diag">🩺 Открыть</button></div>
+  </section>
+</dialog>
 <div id="resizer" role="separator" aria-orientation="vertical" tabindex="0" title="Потяните, чтобы изменить ширину панели. Двойной щелчок — вернуть как было"></div>
 <div class="mrz" id="mrzL" data-side="-1" role="separator" aria-orientation="vertical" tabindex="0" title="Потяните, чтобы изменить ширину области с текстом. Двойной щелчок — вернуть как было"></div>
 <div class="mrz" id="mrzR" data-side="1" role="separator" aria-orientation="vertical" tabindex="0" title="Потяните, чтобы изменить ширину области с текстом. Двойной щелчок — вернуть как было"></div>

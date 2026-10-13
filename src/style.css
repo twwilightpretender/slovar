@@ -109,7 +109,7 @@ main{padding:34px clamp(18px,4vw,60px) 80px;max-width:var(--main-w,1000px);width
 :root[data-style="soft"] .card header .dot{width:13px;height:13px}
 :root[data-style="soft"] .result h1{margin-top:44px}
 :root[data-style="soft"] .chip,:root[data-style="soft"] .recent button{background:var(--panel)}
-@media (max-width:820px){body{grid-template-columns:1fr}aside{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line);flex-direction:row;flex-wrap:wrap;padding:12px}.grp.soon,.side-foot{display:none}}
+@media (max-width:820px){body{grid-template-columns:1fr}aside{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line);flex-direction:row;flex-wrap:wrap;padding:12px}.grp.soon{display:none}.side-foot{padding:0}}
 
 /* ===== новое в приложении ===== */
 .status{font-size:12.5px;color:var(--muted);line-height:1.45}
@@ -205,9 +205,23 @@ aside{padding:20px 10px 16px 14px;gap:14px;overflow-y:auto;overflow-x:hidden;scr
 .card.flash{outline:2px solid transparent;outline-offset:3px;animation:flash 1.4s ease-out}
 
 /* нижние кнопки панели */
-.side-foot{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:0 6px}
-.side-foot .chip{padding:7px 8px;font-size:12.5px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.side-foot #folder,.side-foot #diag{grid-column:span 2}
+.side-foot{display:grid;grid-template-columns:1fr;gap:6px;padding:0 6px}
+.side-foot .chip{padding:8px 10px;font-size:13px;text-align:center;white-space:nowrap;display:flex;align-items:center;justify-content:center;gap:7px}
+
+/* ===== окно настроек ===== */
+dialog#settings{border:1px solid var(--line);border-radius:var(--r);background:var(--panel);color:var(--text);padding:0;width:min(560px,92vw);max-height:86vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+dialog#settings::backdrop{background:rgba(10,12,24,.45)}
+.sethead{display:flex;align-items:center;justify-content:space-between;padding:18px 22px 6px;position:sticky;top:0;background:var(--panel)}
+.sethead h2{margin:0;font:var(--h1w) 22px/1.2 var(--h1font)}
+#settings section{padding:8px 22px 14px}
+#settings h3{margin:14px 0 6px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.srow{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:9px 0;border-top:1px solid var(--line)}
+.srow:first-of-type{border-top:0}
+.srow>span:first-child{display:flex;flex-direction:column;gap:2px;font-size:15px}
+.srow small{color:var(--muted);font-size:12.5px;line-height:1.35}
+.srow .chip{flex:none;font-size:13.5px;padding:7px 14px}
+.srow .pair{display:flex;gap:6px}
+.srow .sw{flex:none}
 .status{padding:0 6px}
 
 /* панель закреплена на всю прокрутку страницы (раньше body был высотой в экран, и панель уезжала) */
