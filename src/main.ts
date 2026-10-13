@@ -14,6 +14,7 @@ import ART_CSS from './ui/article.css?inline';
 import { buildSearchRegex, parseTerms } from './core/fold';
 import { groupDuplicates } from './core/dups';
 import { adaptColors, esc, prepare } from './ui/render';
+import { fontFaceNames, unifyCss } from './ui/unify';
 import { Resources } from './ui/resources';
 
 const $ = <T extends HTMLElement = HTMLElement>(s: string) => document.querySelector<T>(s)!;
@@ -92,6 +93,8 @@ function origName(i: number): string {
 /* частота использования словарей: открытие карточки, переход из списка, щелчок внутри статьи */
 const usage: Record<string, number> = (() => { try { return JSON.parse(store.get('usage', '{}')); } catch { return {}; } })();
 let rankOn = store.get('rank') === '1';
+let uniFont = store.get('unifont') === '1'; // «единый шрифт и размер»: у статей со своим CSS убираем шрифты и абсолютные размеры
+let uniColor = store.get('unicolor') === '1'; // «единые цвета»: цвета текста сводятся к восьми оттенкам приложения (ui/unify.ts)
 const usedInView = new Set<number>(); // в одной показанной статье словарь засчитывается один раз
 function useDict(i: number, once = false) {
   if (once) { if (usedInView.has(i)) return; usedInView.add(i); }
@@ -256,7 +259,8 @@ const isDark = () => document.documentElement.dataset.theme === 'dark';
 function adaptAll() {
   out.querySelectorAll<HTMLElement>('.card .body').forEach((host) => {
     const art = host.shadowRoot?.querySelector('.art:not(.dict)');
-    if (art) adaptColors(art, isDark());
+    if (art) adaptColors(art, isDark(), uniColor);
+    else if (uniColor) { const st = host.shadowRoot?.querySelector('.art.dict'); if (st) adaptColors(st, false, true, true); } // карточку со своим CSS инвертирует фильтр
   });
 }
 
@@ -286,11 +290,12 @@ async function show(h: string) {
     const seen = new Set<string>();
     const bodies: string[] = [];
     for (const x of p.entries) {
-      const pr = prepare(x.html);
+      const pr = prepare(x.html, uniFont);
       for (const href of pr.links) if (!seen.has(href)) { seen.add(href); const c = await res.stylesheet(p.dict, href); if (c) css.push(c); }
       for (const st of pr.styles) { const c = await res.inline(p.dict, st); if (c) css.push(c); }
       bodies.push(`<div class="entry">${pr.body}</div>`);
     }
+    if (uniFont || uniColor) { const faces = fontFaceNames(css.join('\n')); css.forEach((c, i) => (css[i] = unifyCss(c, faces, { font: uniFont, color: uniColor }))); }
     return { dict: p.dict, css, styled: css.length > 0, html: bodies.join('') };
   }));
 
@@ -1238,11 +1243,23 @@ $('#settingsbtn').onclick = () => {
   closeDrawer();
   usageNote();
   $<HTMLInputElement>('#rank').checked = rankOn;
+  $<HTMLInputElement>('#unifont').checked = uniFont;
+  $<HTMLInputElement>('#unicolor').checked = uniColor;
   settings.showModal();
 };
 $('#setclose').onclick = () => settings.close();
 settings.addEventListener('click', (e) => { if (e.target === settings) settings.close(); }); // щелчок по затемнённому фону
 for (const id of ['#folder', '#cloud', '#diag']) $(id).addEventListener('click', () => settings.close()); // они открывают свои экраны
+$('#unifont').addEventListener('change', (e) => {
+  uniFont = (e.target as HTMLInputElement).checked;
+  store.set('unifont', uniFont ? '1' : '');
+  reshow();
+});
+$('#unicolor').addEventListener('change', (e) => {
+  uniColor = (e.target as HTMLInputElement).checked;
+  store.set('unicolor', uniColor ? '1' : '');
+  reshow();
+});
 $('#rank').addEventListener('change', (e) => {
   rankOn = (e.target as HTMLInputElement).checked;
   store.set('rank', rankOn ? '1' : '');

@@ -1,3 +1,5 @@
+import { rgbOf, toneColor, toneOf, unifyInline } from './unify';
+
 export const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
 const SOUND = /\.(wav|mp3|ogg|oga|flac|aac|m4a|spx|opus)$/i;
@@ -13,7 +15,7 @@ export interface Prepared {
  * Очистка и подготовка HTML из словаря. Скрипты, формы и внешние адреса убираются; ссылки entry:// и
  * относительные становятся переходами по словарю; картинки и звук запрашиваются у словаря по имени.
  */
-export function prepare(html: string): Prepared {
+export function prepare(html: string, unify = false): Prepared {
   const doc = new DOMParser().parseFromString(html, 'text/html');
   const links: string[] = [];
   const styles: string[] = [];
@@ -37,7 +39,9 @@ export function prepare(html: string): Prepared {
       } else if (n === 'srcset' || n === 'poster') el.removeAttribute(a.name);
       else if (n === 'style') {
         if (/url\(|expression|@import/i.test(v)) el.removeAttribute(a.name);
-      } else if (n === 'href') {
+        else if (unify) { const u = unifyInline(v); if (u) el.setAttribute('style', u); else el.removeAttribute('style'); }
+      } else if ((n === 'face' || n === 'size') && unify && el.tagName === 'FONT') el.removeAttribute(a.name);
+      else if (n === 'href') {
         const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(v)?.[1]?.toLowerCase();
         const entry = /^(entry|bword):\/*(.*)$/i.exec(v);
         const snd = /^(sound|snd):\/*(.*)$/i.exec(v);
@@ -70,12 +74,23 @@ function decodeSafe(s: string): string {
   try { return decodeURIComponent(s); } catch { return s; }
 }
 
-/** Цвета без CSS словаря (DSL и др.) подстраиваем под тёмную тему (светлота не ниже 68%). */
-export function adaptColors(root: ParentNode, dark: boolean) {
+/**
+ * Цвета без CSS словаря (DSL и др.) подстраиваем под тёмную тему (светлота не ниже 68%).
+ * unify — «единые цвета»: цвет сводится к одному из оттенков приложения (см. unify.ts); styled — статья со своим CSS,
+ * её в тёмной теме инвертирует фильтр, поэтому цвет задаётся для светлой основы.
+ */
+export function adaptColors(root: ParentNode, dark: boolean, unify = false, styled = false) {
   const probe = document.createElement('span');
   document.body.appendChild(probe);
   root.querySelectorAll<HTMLElement>('[style*="color"]').forEach((el) => {
     if (!el.dataset.c) el.dataset.c = el.style.color;
+    if (unify) {
+      const bg = el.style.background || el.style.backgroundColor || el.style.backgroundImage;
+      const rgb = bg ? null : rgbOf(el.dataset.c);
+      const t = rgb && toneOf(rgb);
+      el.style.color = t ? toneColor(t, styled ? 'styled' : dark ? 'dark' : 'light') : el.dataset.c;
+      return;
+    }
     if (!dark) { el.style.color = el.dataset.c; return; }
     probe.style.color = el.dataset.c;
     const m = getComputedStyle(probe).color.match(/\d+/g);
