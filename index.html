@@ -10,14 +10,20 @@
 <link rel="icon" type="image/png" sizes="192x192" href="app-icon-192.png">
 <link rel="apple-touch-icon" href="app-icon-192.png">
 <script>
-  // тема и вид до отрисовки, чтобы не мигало; верхняя планка окна приложения красится в цвет фона темы
+  // тема и оформление до отрисовки, чтобы не мигало; верхняя планка окна приложения красится в цвет фона
   try {
     const t = localStorage.getItem('theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
     document.documentElement.dataset.theme = t;
-    const soft = localStorage.getItem('style') === 'soft';
-    if (soft) document.documentElement.dataset.style = 'soft';
-    const bg = { light: '#f6f5f2', dark: '#141517', softlight: '#f6f1fb', softdark: '#1b1a2e' }[(soft ? 'soft' : '') + t];
-    document.querySelector('meta[name="theme-color"]').content = bg;
+    const look = localStorage.getItem('look') || (localStorage.getItem('style') === 'soft' ? 'violet' : 'classic');
+    const L = {
+      classic: [0, '', '#f6f5f2', '#141517'], violet: [1, '', '#f6f1fb', '#1b1a2e'],
+      sunset: [1, 'sunset', '#fff1ea', '#2b1a2e'], sakura: [1, 'sakura', '#fdeef6', '#2a1730'],
+      ocean: [1, 'ocean', '#eaf4fb', '#12202f'], forest: [1, 'forest', '#eef7f1', '#13241f'],
+      paper: [0, 'paper', '#f1e8d4', '#1c1812'],
+    }[look] || [0, '', '#f6f5f2', '#141517'];
+    if (L[0]) document.documentElement.dataset.style = 'soft';
+    if (L[1]) document.documentElement.dataset.palette = L[1];
+    document.querySelector('meta[name="theme-color"]').content = t === 'dark' ? L[3] : L[2];
   } catch (e) {}
 </script>
 </head>
@@ -39,7 +45,8 @@
   <section>
     <h3>Оформление</h3>
     <div class="srow"><span>Тема</span><button class="chip" id="theme">◐ Тема</button></div>
-    <div class="srow"><span>Вид</span><button class="chip" id="style">▦ Вид</button></div>
+    <div class="srow"><span>Оформление <small>цвета и фон; светлая или тёмная тема выбирается отдельно</small></span></div>
+    <div class="looks" id="looks"></div>
     <div class="srow"><span>Размер текста</span><span class="pair"><button class="chip" id="fsm" title="Меньше">A−</button><button class="chip" id="fsp" title="Больше">A+</button></span></div>
     <div class="srow"><span>Ширина панелей <small>панель словарей и область с текстом</small></span><button class="chip" id="resetsizes">Сбросить</button></div>
   </section>

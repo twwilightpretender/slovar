@@ -990,14 +990,31 @@ function setTheme(t: string) {
   adaptAll();
 }
 $('#theme').onclick = () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
-function setStyle(soft: boolean) {
-  if (soft) document.documentElement.dataset.style = 'soft'; else delete document.documentElement.dataset.style;
-  $('#style').textContent = '▦ Вид: ' + (soft ? 'мягче' : 'обычный');
-  store.set('style', soft ? 'soft' : '');
+/* ---------- оформление: форма («обычная» или «мягче» с размытием) + палитра ---------- */
+interface Look { id: string; name: string; soft: boolean; palette?: string; grad: string; dot: string }
+const LOOKS: Look[] = [
+  { id: 'classic', name: 'Обычный', soft: false, grad: 'linear-gradient(135deg,#f6f5f2,#e8e5de)', dot: '#2f5bea' },
+  { id: 'violet', name: 'Фиолетово-голубой', soft: true, grad: 'linear-gradient(135deg,#fdeee6,#f1ecfd 55%,#e6f2fb)', dot: '#7a5af5' },
+  { id: 'sunset', name: 'Закат', soft: true, palette: 'sunset', grad: 'linear-gradient(135deg,#ffe9dc,#ffe1e6 55%,#f6e5ff)', dot: '#e5573d' },
+  { id: 'sakura', name: 'Сакура', soft: true, palette: 'sakura', grad: 'linear-gradient(135deg,#ffe8f1,#fde9f6 55%,#efe9ff)', dot: '#d6457a' },
+  { id: 'ocean', name: 'Океан', soft: true, palette: 'ocean', grad: 'linear-gradient(135deg,#e3f2ff,#e2f6fb 55%,#e9f0ff)', dot: '#1383d6' },
+  { id: 'forest', name: 'Лес', soft: true, palette: 'forest', grad: 'linear-gradient(135deg,#e6f6ea,#e3f4ef 55%,#eaf3df)', dot: '#1f9d6b' },
+  { id: 'paper', name: 'Книга', soft: false, palette: 'paper', grad: 'linear-gradient(135deg,#f1e8d4,#e6d9bb)', dot: '#a4572b' },
+];
+let lookId = store.get('look') || (store.get('style') === 'soft' ? 'violet' : 'classic'); // раньше было только «обычный» / «мягче»
+function setLook(id: string) {
+  const l = LOOKS.find((x) => x.id === id) ?? LOOKS[0];
+  lookId = l.id;
+  const r = document.documentElement.dataset;
+  if (l.soft) r.style = 'soft'; else delete r.style;
+  if (l.palette) r.palette = l.palette; else delete r.palette;
+  store.set('look', l.id);
+  document.querySelectorAll<HTMLElement>('#looks .look').forEach((b) => b.classList.toggle('on', b.dataset.look === l.id));
   syncChrome();
 }
-$('#style').onclick = () => setStyle(document.documentElement.dataset.style !== 'soft');
-setStyle(store.get('style') === 'soft');
+$('#looks').innerHTML = LOOKS.map((l) => `<button type="button" class="look" data-look="${l.id}"><span class="pv" style="background:${l.grad}"><i style="background:${l.dot}"></i><u></u></span><b>${esc(l.name)}</b></button>`).join('');
+$('#looks').addEventListener('click', (e) => { const b = (e.target as HTMLElement).closest<HTMLElement>('.look'); if (b) setLook(b.dataset.look!); });
+setLook(lookId);
 let fs = +store.get('fs', '19');
 function setFs(v: number) { fs = Math.max(14, Math.min(34, v)); document.documentElement.style.setProperty('--fs', fs + 'px'); store.set('fs', String(fs)); }
 $('#fsm').onclick = () => setFs(fs - 2);
