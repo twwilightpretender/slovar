@@ -6,7 +6,7 @@
   --d1:#2f5bea; --d2:#c2570b; --d3:#0f8a6a; --d4:#a23bb5; --d5:#b08a00; --d6:#c2311f; --d7:#0a7ea4; --d8:#6f6b64; --fs:19px;
   --r:18px; --rs:10px; --pill:99px; --bgimg:none; --blur:none; --sbh:60px; --gap:16px;
   --uifont:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-  --bodyfont:"Iowan Old Style",Charter,Georgia,"Times New Roman",serif; --h1font:"Iowan Old Style",Charter,Georgia,serif; --h1w:650; --lh:1.6;
+  --bodyfont:"Iowan Old Style",Charter,Georgia,"Times New Roman","Palatino Linotype",Cambria,"Noto Serif","Gentium Plus",serif; --h1font:"Iowan Old Style",Charter,Georgia,"Times New Roman",serif; --h1w:650; --lh:1.6;
 }
 :root[data-theme="dark"]{
   --bg:#141517; --panel:#1c1e21; --panel2:#25282c; --text:#e8e6e1; --muted:#9a968e; --line:#2f3237;

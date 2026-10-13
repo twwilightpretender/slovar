@@ -2,6 +2,8 @@
  * Текстовый поиск: приведение текста к виду «без регистра, диакритики и знаков ударения, дефисы и
  * апострофы одинаковые, пробелы сжаты» — и запрос, и статья приводятся одинаково.
  */
+import { IGNORABLE } from './normalize';
+
 const ASCII = /^[\x00-\x7f]*$/;
 
 export function foldFast(s: string): string {
@@ -13,23 +15,26 @@ export function foldFast(s: string): string {
       .replace(/ß/g, 'ss')
       .replace(/ё/g, 'е')
       .replace(/й/g, '') // «й» не должна превращаться в «и»
+      .replace(/ς/g, 'σ')
       .normalize('NFD')
-      .replace(/[\p{M}\p{Cf}]/gu, '')
+      .replace(IGNORABLE, '')
       .replace(//g, 'й')
-      .replace(/[’‘`´]/g, "'");
+      .replace(/[’‘`´\u1FBD\u1FBF\u02BC]/g, "'")
+      .normalize('NFC');
   }
   return s.replace(/[-‐‑–—_]/g, ' ').replace(/\s+/g, ' ');
 }
 
 function foldChar(ch: string): string {
   const c = ch.toLowerCase();
+  if (c === 'ς') return 'σ';
   if (c === 'œ') return 'oe';
   if (c === 'æ') return 'ae';
   if (c === 'ß') return 'ss';
   if (c === 'ё') return 'е';
   if (c === 'й') return 'й';
-  const d = c.normalize('NFD').replace(/[\p{M}\p{Cf}]/gu, '');
-  if (/[’‘`´]/.test(d)) return "'";
+  const d = c.normalize('NFD').replace(IGNORABLE, '').normalize('NFC');
+  if (/[’‘`´\u1FBD\u1FBF\u02BC]/.test(d)) return "'";
   if (/[-‐‑–—_\s]/.test(d)) return ' ';
   return d;
 }
@@ -71,8 +76,23 @@ export function plainText(html: string): string {
 }
 
 const BASE = 'aàáâãäåāăąæ|eèéêëēėęě|iìíîïīį|oòóôõöøō|uùúûüūůű|cçćč|nñń|yýÿ|sšśß|zžźż|lł|её'.split('|');
+/** Для каждой буквы: она сама и все её написания с диакритикой одним символом (ά ὰ ᾶ ἄ ᾄ…, é, ё…). Строится по таблицам Юникода. */
 const CLASS = new Map<string, string>();
-for (const g of BASE) CLASS.set(g[0], g);
+{
+  const variants = new Map<string, Set<string>>();
+  const add = (base: string, ch: string) => (variants.get(base) ?? variants.set(base, new Set([base])).get(base)!).add(ch);
+  for (const [a, b] of [[0xc0, 0x24f], [0x370, 0x3ff], [0x400, 0x4ff], [0x1e00, 0x1eff], [0x1f00, 0x1fff]]) {
+    for (let cp = a; cp <= b; cp++) {
+      const ch = String.fromCodePoint(cp);
+      if (ch.toLowerCase() !== ch || ch === 'й') continue; // заглавные покрывает флаг i; «й» остаётся отдельной буквой
+      const base = ch.normalize('NFD').replace(IGNORABLE, '');
+      if (base !== ch && base.length === 1) add(base, ch);
+    }
+  }
+  add('σ', 'ς');
+  for (const g of BASE) for (const ch of g) add(g[0], ch);
+  for (const [base, set] of variants) CLASS.set(base, [...set].join(''));
+}
 const RE_SPECIAL = /[.*+?^${}()|[\]\\]/g;
 
 /**

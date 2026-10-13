@@ -13,9 +13,9 @@ export interface Layout {
 
 const KEY = 'layout';
 const LANG_NAMES: Record<string, string> = {
-  fr: 'Французский', de: 'Немецкий', la: 'Латынь', en: 'Английский', ru: 'Русский', other: 'Прочие',
+  fr: 'Французский', de: 'Немецкий', la: 'Латынь', grc: 'Греческий', en: 'Английский', ru: 'Русский', other: 'Прочие',
 };
-const LANG_ORDER = ['fr', 'la', 'de', 'en', 'ru', 'other'];
+const LANG_ORDER = ['fr', 'la', 'grc', 'de', 'en', 'ru', 'other'];
 
 export function loadLayout(): Layout {
   try {
@@ -32,6 +32,7 @@ const LANG_WORDS: Record<string, string> = {
   fr: 'fr|fra|fre|french|francais|français|franz|französisch|franzosisch',
   de: 'de|deu|ger|german|deutsch',
   la: 'la|lat|latin|latein',
+  grc: 'grc|gre|el|ell|greek|ancient greek|ancientgreek|modern greek|griech|griechisch|grec',
   en: 'en|eng|english|englisch',
   ru: 'ru|rus|russian|russisch',
 };
@@ -40,11 +41,12 @@ for (const [l, ws] of Object.entries(LANG_WORDS)) for (const w of ws.split('|'))
 const ALL = [...WORD2LANG.keys()].sort((a, b) => b.length - a.length).join('|');
 const PAIR = new RegExp(`(?<![a-zа-яё])(${ALL})[-_](?:${ALL})(?![a-zа-яё])`, 'i');
 const RU_PREFIX: [RegExp, string][] = [
-  [/(?<![а-я])фр[а-я]*-/, 'fr'], [/(?<![а-я])нем[а-я]*-/, 'de'], [/(?<![а-я])лат[а-я]*-/, 'la'],
+  [/(?<![а-я])фр[а-я]*-/, 'fr'], [/(?<![а-я])нем[а-я]*-/, 'de'], [/(?<![а-я])лат[а-я]*-/, 'la'], [/(?<![а-я])(др\.?-?)?греч[а-я]*-/, 'grc'],
   [/(?<![а-я])англ[а-я]*-/, 'en'], [/(?<![а-я])рус[а-я]*-/, 'ru'],
 ];
 const NAMES: [RegExp, string][] = [
   [/simpson|lewis|redmond|poliachev|дворецк|тананушко|латин|latin|(?<![a-z])lat(?![a-z])|(?<![а-я])лат(?![а-я])/i, 'la'],
+  [/liddell|lsj|bailly|бальи|вейсман|weismann|греч|greek|(?<![a-z])grc(?![a-z])|griech|lexicon.*greek|thesaurus.*graec/i, 'grc'],
   [/grandrobert|robert|littr|trezor|трезор|tlf|nicot|alainrey|dico_af|larousse|лярус|académie|academie|гран робер|истор.* робер/i, 'fr'],
   [/grimm|dwds|kluge|duden|german/i, 'de'],
   [/oxford|оксфорд|webster|вебстер|merriam|cambridge|кэмбридж|camen|pons/i, 'en'],

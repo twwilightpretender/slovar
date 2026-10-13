@@ -87,7 +87,7 @@ async function cachePut(id: string, val: CacheRec): Promise<void> {
 }
 
 /* ---------- кэш готового общего индекса ---------- */
-const MERGED_VERSION = 1; // менять при изменении нормализации ключей (core/normalize.ts) или формата этого кэша
+const MERGED_VERSION = 2; // менять при изменении нормализации ключей (core/normalize.ts) или формата этого кэша
 interface Merged { k: string; o: Uint32Array; d: Uint16Array; e: Uint32Array; c: Uint32Array }
 let mdbp: Promise<IDBDatabase> | null = null;
 function mdb(): Promise<IDBDatabase> {
