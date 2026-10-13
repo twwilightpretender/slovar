@@ -9,6 +9,17 @@ interface GlsCache {
   ends: Float64Array;
 }
 
+/**
+ * В Grimm 2.0 у ~110 статей вместо заголовка записана вся статья с разметкой («abpflöcken, <i>palis signare…»).
+ * Заголовком считаем слово до первой разметки.
+ */
+function cleanHead(h: string): string {
+  const cut = h.indexOf('<');
+  if (cut < 0) return h;
+  const w = h.slice(0, cut).replace(/[\s,;:.]+$/, '').trim();
+  return w || h.replace(/<[^>]*>/g, '').trim().slice(0, 40);
+}
+
 async function parse(f: File, onProgress: (d: number, t: number) => void): Promise<GlsCache> {
   const dec = new TextDecoder('utf-8');
   const headwords: string[] = [];
@@ -46,7 +57,7 @@ async function parse(f: File, onProgress: (d: number, t: number) => void): Promi
       } else if (le === p) flush(); // пустая строка — конец статьи
       else if (!heads.length) {
         for (const h of dec.decode(buf.subarray(p, le)).split('|')) {
-          const t = h.replace(/\{[^}]*\}/g, '').replace(/\\(.)/g, '$1').trim();
+          const t = cleanHead(h.replace(/\{[^}]*\}/g, '').replace(/\\(.)/g, '$1').trim());
           if (t) heads.push(t);
         }
       } else {
@@ -81,8 +92,13 @@ async function parse(f: File, onProgress: (d: number, t: number) => void): Promi
 class GlsReader implements Reader {
   private dec = new TextDecoder('utf-8');
   title: string;
-  constructor(private f: File, private c: GlsCache) { this.title = c.title; }
-  get headwords() { return this.c.headwords; }
+  private hw: string[];
+  constructor(private f: File, private c: GlsCache) {
+    this.title = c.title;
+    // кэши, сделанные до исправления, чистим при открытии (число заголовков не меняется)
+    this.hw = c.headwords.some((h) => h.includes('<')) ? c.headwords.map(cleanHead) : c.headwords;
+  }
+  get headwords() { return this.hw; }
   bodyId(i: number) { return this.c.starts[i]; }
   private ahead = false;
   private win?: { start: number; data: Uint8Array };
