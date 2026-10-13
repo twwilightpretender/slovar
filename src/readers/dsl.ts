@@ -13,6 +13,21 @@ interface DslCache {
 }
 
 /**
+ * Строка без отступа, которая на самом деле начало статьи, а не заголовок (в Grimm у ~10 статей потерялась строка
+ * заголовка, и статья начинается прямо с «слово, текст…»): в ней закрывающие теги DSL, метка абзаца [m1],
+ * либо она слишком длинная для заголовка и похожа на предложение.
+ */
+const looksLikeBody = (s: string) => s.length > 300 || /\[\/(?:i|b|c|m|u|sup|sub|ex|trn|\*)\]|\[m\d?\]/.test(s) || (s.length > 150 && /[.;:]\s/.test(s));
+
+/** Заголовки из такой строки: слово (или слова через запятую) до первой разметки либо до первой запятой с пробелом. */
+function defectiveHeads(line: string): string[] {
+  // слова без пробелов, через запятую без пробела («gewerbe-,gewerbslegislation,[m1]…»), дальше разметка или пробел
+  const m = /^([^\s\[,]+(?:,[^\s\[,]+)*),?(?=\[|\s|$)/.exec(line);
+  const head = m ? m[1] : line.split(/,\s/)[0];
+  return head.split(',').map((t) => t.trim()).filter(Boolean).slice(0, 6);
+}
+
+/**
  * Один проход по потоку: тело статьи читаем только как диапазон байт, декодируем лишь строки заголовков.
  * Поэтому Трезор (380 МБ) не превращается в строку в памяти.
  */
@@ -74,8 +89,16 @@ async function parse(bytes: Bytes, onProgress: (d: number, t: number) => void): 
           const l = /^#INDEX_LANGUAGE\s+"(.*)"/.exec(line);
           if (l) lang = l[1];
         } else { // заголовок
-          if (bodyStart >= 0) flush();
-          heads.push(dec.decode(buf.subarray(p, le)));
+          const line = dec.decode(buf.subarray(p, le));
+          if (looksLikeBody(line)) { // потерянная строка заголовка: слово берём из начала строки, сама строка — начало тела
+            flush();
+            heads = defectiveHeads(line);
+            bodyStart = base + p;
+            bodyEnd = base + next;
+          } else {
+            if (bodyStart >= 0) flush();
+            heads.push(line);
+          }
         }
       }
       p = next;
@@ -113,10 +136,30 @@ async function parse(bytes: Bytes, onProgress: (d: number, t: number) => void): 
   };
 }
 
+/**
+ * Кэши, собранные до исправления: «заголовок»-начало статьи (looksLikeBody) заменяем настоящим заголовком,
+ * а тело начинаем с самой этой строки (она лежит сразу за концом предыдущей статьи).
+ */
+export function repairCache(c: DslCache): DslCache {
+  if (!c.headwords.some(looksLikeBody)) return c;
+  const hw: string[] = [], st: number[] = [], en: number[] = [];
+  for (let i = 0; i < c.headwords.length; i++) {
+    const h = c.headwords[i];
+    if (!looksLikeBody(h)) { hw.push(h); st.push(c.starts[i]); en.push(c.ends[i]); continue; }
+    if (i > 0 && c.starts[i] === c.starts[i - 1] && looksLikeBody(c.headwords[i - 1])) continue; // варианты той же строки
+    const from = i > 0 ? Math.min(c.ends[i - 1], c.starts[i]) : c.starts[i];
+    for (const w of defectiveHeads(h)) for (const v of headVariants(w)) if (v) { hw.push(v); st.push(from); en.push(c.ends[i]); }
+  }
+  return { ...c, headwords: hw, starts: Float64Array.from(st), ends: Float64Array.from(en) };
+}
+
 class DslReader implements Reader {
+  private c: DslCache;
   private dec: TextDecoder;
   private zip?: Zip;
-  constructor(private bytes: Bytes, private c: DslCache, fallbackTitle: string, zip?: File) {
+  constructor(private bytes: Bytes, c0: DslCache, fallbackTitle: string, zip?: File) {
+    const c = repairCache(c0);
+    this.c = c;
     if (zip) this.zip = new Zip(zip);
     this.dec = new TextDecoder(c.utf16 ? 'utf-16le' : 'utf-8');
     this.title = c.title || fallbackTitle;

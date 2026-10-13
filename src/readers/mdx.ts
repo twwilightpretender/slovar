@@ -205,9 +205,15 @@ class Mdd {
 class MdxReader implements Reader {
   private rec: Records;
   private mdd: Mdd;
-  constructor(f: File, private c: MdxCache, mdd: File[]) { this.rec = new Records(f, c); this.mdd = new Mdd(mdd); }
+  private hw: string[];
+  constructor(f: File, private c: MdxCache, mdd: File[]) {
+    this.rec = new Records(f, c);
+    this.mdd = new Mdd(mdd);
+    // в некоторых словарях (Le Robert historique) в заголовки попала HTML-разметка («AP<span…>Ô»): убираем теги при открытии
+    this.hw = c.headwords.some((h) => h.includes('<')) ? c.headwords.map((h) => (h.includes('<') ? h.replace(/<[^>]*>/g, '') : h)) : c.headwords;
+  }
   get title() { return this.c.title; }
-  get headwords() { return this.c.headwords; }
+  get headwords() { return this.hw; }
   read(i: number) { return this.rec.text(this.c.offsets[i]); }
   bodyId(i: number) { return this.c.offsets[i]; }
   resource(name: string) { return this.mdd.get(name); }

@@ -87,8 +87,13 @@ function part(type: string, data: Uint8Array, td: TextDecoder): string {
 class SdReader implements Reader {
   private td = new TextDecoder('utf-8');
   title: string;
-  constructor(private dict: Bytes, private c: SdCache, fallback: string) { this.title = c.title || fallback; }
-  get headwords() { return this.c.headwords; }
+  private hw: string[];
+  constructor(private dict: Bytes, private c: SdCache, fallback: string) {
+    this.title = c.title || fallback;
+    // в некоторых словарях заголовки с разметкой («n<SUP>ième</SUP>»): убираем теги при открытии (число заголовков не меняется)
+    this.hw = c.headwords.some((h) => h.includes('<')) ? c.headwords.map((h) => (h.includes('<') ? h.replace(/<[^>]*>/g, '') : h)) : c.headwords;
+  }
+  get headwords() { return this.hw; }
   get canon() { return this.c.canon; }
   bodyId(i: number) { return this.c.offs[i]; }
   scan(on: boolean) { this.dict.readAhead?.(on); }
