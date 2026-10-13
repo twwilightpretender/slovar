@@ -9,7 +9,7 @@ import {
   clearCloud, cloudCapabilities, cloudEntries, cloudSupported, googleKey, hasBuiltinGoogleKey, isGoogle, listCloud, normalizeLink, planSync, setGoogleKey, syncCloud,
   type CloudItem,
 } from './storage/cloud';
-import { assign, guessLang, loadLayout, move, newGroupId, saveLayout } from './ui/layout';
+import { assign, guessLang, loadLayout, move, moveGroup, newGroupId, saveLayout, shiftGroup } from './ui/layout';
 import ART_CSS from './ui/article.css?inline';
 import { buildSearchRegex, parseTerms } from './core/fold';
 import { groupDuplicates } from './core/dups';
@@ -102,7 +102,13 @@ function useDict(i: number, once = false) {
 }
 
 /** Словари, участвующие в поиске: отмечены галочкой и входят в выбранную группу. */
-const mask = () => enabled.map((on, i) => on && (!lay.scope || lay.of[sources[i].id] === lay.scope));
+/** Избранные словари: остаются в своих группах, а режим «только избранные» ограничивает ими поиск и список. */
+const FAV_SCOPE = '__fav';
+const fav = new Set<string>((() => { try { return JSON.parse(store.get('fav', '[]')); } catch { return []; } })());
+const saveFav = () => store.set('fav', JSON.stringify([...fav]));
+const favCount = () => sources.filter((s) => fav.has(s.id)).length;
+const inScope = (i: number) => !lay.scope || (lay.scope === FAV_SCOPE ? fav.has(sources[i].id) : lay.of[sources[i].id] === lay.scope);
+const mask = () => enabled.map((on, i) => on && inScope(i));
 /** Порядок показа словарей: по группам, внутри группы — как расставил пользователь. */
 function displayOrder(): number[] {
   const idx = new Map(sources.map((s, i) => [s.id, i]));
@@ -145,7 +151,7 @@ async function ingest(entries: Entry[], label: string) {
     const st = status[i];
     return { id: s.id, lang: guessLang(s.folder + '/' + s.main.name, st.s === 'ready' ? st.lang : undefined) };
   }));
-  if (lay.scope && !lay.groups.some((g) => g.id === lay.scope)) lay.scope = '';
+  if (lay.scope === FAV_SCOPE ? !favCount() : lay.scope && !lay.groups.some((g) => g.id === lay.scope)) lay.scope = '';
   saveLayout(lay);
   const n = status.filter((s) => s.s === 'ready').length;
   $('#status').textContent = `Готово: ${n} из ${sources.length} словарей, ${r.total.toLocaleString('ru')} заголовков, ${(r.ms / 1000).toFixed(1)} с.`;
@@ -172,23 +178,25 @@ function dictRow(i: number): string {
   if (st.s === 'error') { sub = `<span class="err">${esc(st.reason)}</span>`; cls = ' skip'; }
   const has = have.has(i) ? ' has' : '';
   const tip = have.size ? (have.has(i) ? 'Перейти к статье в этом словаре' : 'В этом словаре нет статьи для текущего слова') : 'Перетащите, чтобы переставить';
-  return `<div class="dict${enabled[i] && !cls ? '' : ' off'}${cls}${has}" draggable="${editingId === s.id ? 'false' : 'true'}" data-id="${esc(s.id)}" data-i="${i}" title="${tip}"><span class="dot" style="background:${color(i)}"></span><span class="nm">${editingId === s.id ? `<input class="rename" value="${esc(editValue)}" maxlength="80" spellcheck="false" aria-label="Название словаря">` : esc(dictName(i))}<small>${sub}</small>${bar}</span><button type="button" class="pen" data-pen="${i}" title="Переименовать" aria-label="Переименовать словарь">✎</button><label class="sw" title="Включить или выключить словарь"><input type="checkbox" data-i="${i}" ${enabled[i] ? 'checked' : ''}><span></span></label></div>`;
+  return `<div class="dict${enabled[i] && !cls ? '' : ' off'}${cls}${has}" draggable="${editingId === s.id ? 'false' : 'true'}" data-id="${esc(s.id)}" data-i="${i}" title="${tip}"><span class="dot" style="background:${color(i)}"></span><span class="nm">${editingId === s.id ? `<input class="rename" value="${esc(editValue)}" maxlength="80" spellcheck="false" aria-label="Название словаря">` : esc(dictName(i))}<small>${sub}</small>${bar}</span><button type="button" class="star${fav.has(s.id) ? ' on' : ''}" data-star="${i}" title="${fav.has(s.id) ? 'Убрать из избранного' : 'В избранное'}" aria-label="Избранное" aria-pressed="${fav.has(s.id)}">${fav.has(s.id) ? '★' : '☆'}</button><button type="button" class="pen" data-pen="${i}" title="Переименовать" aria-label="Переименовать словарь">✎</button><label class="sw" title="Включить или выключить словарь"><input type="checkbox" data-i="${i}" ${enabled[i] ? 'checked' : ''}><span></span></label></div>`;
 }
 
 function renderDicts() {
   const idx = new Map(sources.map((s, i) => [s.id, i]));
+  const favMode = lay.scope === FAV_SCOPE;
   let html = folderName ? `<div class="folder-name">📁 ${esc(folderName)}</div>` : '';
+  if (sources.length) html += `<button type="button" class="chip favmode${favMode ? ' on' : ''}" id="favmode" title="${favCount() ? 'Показывать и искать только в избранных словарях' : 'Отметьте словари звёздочкой ☆'}">★ Только избранные <span class="tag">${favCount()}</span></button>`;
   const placed = new Set<number>();
   for (const g of lay.groups) {
-    const members = lay.order.filter((id) => lay.of[id] === g.id && idx.has(id)).map((id) => idx.get(id)!);
-    if (!members.length && g.id.startsWith('auto:')) continue;
+    const members = lay.order.filter((id) => lay.of[id] === g.id && idx.has(id)).map((id) => idx.get(id)!).filter((i) => !favMode || fav.has(sources[i].id));
+    if (!members.length && (g.id.startsWith('auto:') || favMode)) continue;
     members.forEach((i) => placed.add(i));
     const on = members.filter((i) => enabled[i]).length;
-    html += `<div class="ghead" data-g="${g.id}"><span class="caret">${g.collapsed ? '▸' : '▾'}</span><span class="gname" title="Двойной щелчок — переименовать">${esc(g.name)}</span><span class="tag">${on}/${members.length}</span>${members.length ? '' : `<button class="gx" data-del="${g.id}" title="Удалить пустую группу">✕</button>`}</div>`;
+    html += `<div class="ghead" draggable="true" data-g="${g.id}"><span class="caret">${g.collapsed ? '▸' : '▾'}</span><span class="gname" title="Двойной щелчок — переименовать, перетащите — переставить группу">${esc(g.name)}</span><span class="gmv"><button type="button" data-gmove="-1" title="Группа выше" aria-label="Группа выше">▲</button><button type="button" data-gmove="1" title="Группа ниже" aria-label="Группа ниже">▼</button></span><span class="tag">${on}/${members.length}</span>${members.length ? '' : `<button class="gx" data-del="${g.id}" title="Удалить пустую группу">✕</button>`}</div>`;
     if (!g.collapsed) html += members.map(dictRow).join('');
   }
-  html += sources.map((_, i) => i).filter((i) => !placed.has(i)).map(dictRow).join(''); // пока группы не назначены
-  if (sources.length && lay.groups.length) html += '<button class="chip addgrp" id="addgrp">＋ Группа</button>';
+  html += sources.map((_, i) => i).filter((i) => !placed.has(i) && (!favMode || fav.has(sources[i].id))).map(dictRow).join(''); // пока группы не назначены
+  if (sources.length && lay.groups.length && !favMode) html += '<button class="chip addgrp" id="addgrp">＋ Группа</button>';
   const el = $('#dictlist');
   el.innerHTML = html;
   if (have.size) el.setAttribute('data-art', ''); else el.removeAttribute('data-art');
@@ -197,8 +205,9 @@ function renderDicts() {
 function renderScope() {
   const el = $('#scope');
   const have = lay.groups.filter((g) => Object.entries(lay.of).some(([id, gid]) => gid === g.id && sources.some((s) => s.id === id)));
-  if (have.length < 2) { el.innerHTML = ''; return; }
-  el.innerHTML = 'Искать в:' + [{ id: '', name: 'Всех' }, ...have].map((g) => `<button class="${lay.scope === g.id ? 'on' : ''}" data-scope="${g.id}">${esc(g.name)}</button>`).join('');
+  const favs = favCount() ? [{ id: FAV_SCOPE, name: '★ Избранные' }] : [];
+  if (have.length < 2 && !favs.length) { el.innerHTML = ''; return; }
+  el.innerHTML = 'Искать в:' + [{ id: '', name: 'Всех' }, ...favs, ...have].map((g) => `<button class="${lay.scope === g.id ? 'on' : ''}" data-scope="${g.id}">${esc(g.name)}</button>`).join('');
 }
 
 /* ---------- поиск и подсказки ---------- */
@@ -935,8 +944,27 @@ dl.addEventListener('click', (e) => {
   if (t.closest('.rename')) return;
   const pen = t.closest<HTMLElement>('.pen');
   if (pen) { startRename(sources[+pen.dataset.pen!].id); return; }
+  const star = t.closest<HTMLElement>('.star');
+  if (star) {
+    const id = sources[+star.dataset.star!].id;
+    if (fav.has(id)) fav.delete(id); else fav.add(id);
+    saveFav();
+    if (lay.scope === FAV_SCOPE && !favCount()) lay.scope = ''; // убрали последний: режим выключается
+    saveLayout(lay); renderDicts(); renderScope();
+    if (q.value.trim()) renderSug();
+    return;
+  }
   const row = t.closest<HTMLElement>('.dict');
   if (row && !t.closest('.sw')) { if (have.has(+row.dataset.i!)) jumpToDict(+row.dataset.i!); return; }
+  if (t.closest('#favmode')) {
+    if (!favCount()) { $('#status').textContent = 'Отметьте нужные словари звёздочкой ☆ справа от названия.'; return; }
+    lay.scope = lay.scope === FAV_SCOPE ? '' : FAV_SCOPE;
+    saveLayout(lay); renderDicts(); renderScope();
+    if (q.value.trim()) renderSug();
+    return;
+  }
+  const gmv = t.closest<HTMLElement>('[data-gmove]');
+  if (gmv) { const gid = gmv.closest<HTMLElement>('.ghead')!.dataset.g!; shiftGroup(lay, gid, +gmv.dataset.gmove! as -1 | 1, visibleGroupIds()); saveRender(); return; }
   const del = t.closest<HTMLElement>('[data-del]');
   if (del) { lay.groups = lay.groups.filter((g) => g.id !== del.dataset.del); if (lay.scope === del.dataset.del) lay.scope = ''; saveRender(); return; }
   if (t.closest('#addgrp')) {
@@ -957,8 +985,26 @@ dl.addEventListener('dblclick', (e) => {
   if (name) g.name = name;
   saveRender();
 });
+/** Группы, показанные сейчас в списке (пустые автоматические скрыты). */
+function visibleGroupIds(): string[] {
+  const idx = new Set(sources.map((s) => s.id));
+  return lay.groups
+    .filter((g) => !g.id.startsWith('auto:') || lay.order.some((id) => lay.of[id] === g.id && idx.has(id)))
+    .map((g) => g.id);
+}
 let dragId = '';
+let dragGroup = '', dropAfter = false;
+const clearGroupMarks = () => dl.querySelectorAll('.gover-before,.gover-after').forEach((x) => x.classList.remove('gover-before', 'gover-after'));
 dl.addEventListener('dragstart', (e) => {
+  const head = (e.target as HTMLElement).closest<HTMLElement>('.ghead');
+  if (head && !(e.target as HTMLElement).closest('.dict')) {
+    dragGroup = head.dataset.g!;
+    e.dataTransfer!.effectAllowed = 'move';
+    e.dataTransfer!.setData('text/plain', dragGroup);
+    head.classList.add('dragging');
+    setTimeout(() => dl.classList.add('gdrag'), 0); // на время переноса списки словарей сворачиваются: видны только группы
+    return;
+  }
   const row = (e.target as HTMLElement).closest<HTMLElement>('.dict');
   if (!row) return;
   dragId = row.dataset.id!;
@@ -966,8 +1012,18 @@ dl.addEventListener('dragstart', (e) => {
   e.dataTransfer!.setData('text/plain', dragId);
   row.classList.add('dragging');
 });
-dl.addEventListener('dragend', () => { dragId = ''; dl.querySelectorAll('.dragging,.dragover').forEach((x) => x.classList.remove('dragging', 'dragover')); });
+dl.addEventListener('dragend', () => { dragId = ''; dragGroup = ''; dl.classList.remove('gdrag'); clearGroupMarks(); dl.querySelectorAll('.dragging,.dragover').forEach((x) => x.classList.remove('dragging', 'dragover')); });
 dl.addEventListener('dragover', (e) => {
+  if (dragGroup) {
+    const h = (e.target as HTMLElement).closest<HTMLElement>('.ghead');
+    if (!h || h.dataset.g === dragGroup) return;
+    e.preventDefault();
+    const r = h.getBoundingClientRect();
+    dropAfter = e.clientY > r.top + r.height / 2;
+    clearGroupMarks();
+    h.classList.add(dropAfter ? 'gover-after' : 'gover-before');
+    return;
+  }
   if (!dragId) return;
   const t = (e.target as HTMLElement).closest<HTMLElement>('.dict,.ghead');
   if (!t) return;
@@ -976,6 +1032,14 @@ dl.addEventListener('dragover', (e) => {
   t.classList.add('dragover');
 });
 dl.addEventListener('drop', (e) => {
+  if (dragGroup) {
+    const h = (e.target as HTMLElement).closest<HTMLElement>('.ghead');
+    if (h) { e.preventDefault(); moveGroup(lay, dragGroup, h.dataset.g!, dropAfter); }
+    dragGroup = '';
+    dl.classList.remove('gdrag');
+    saveRender();
+    return;
+  }
   if (!dragId) return;
   const t = (e.target as HTMLElement).closest<HTMLElement>('.dict,.ghead');
   if (!t) return;
@@ -991,6 +1055,7 @@ document.addEventListener('click', (e) => {
   lay.scope = sc.dataset.scope!;
   saveLayout(lay);
   renderScope();
+  renderDicts();
   if (q.value.trim()) renderSug();
 });
 

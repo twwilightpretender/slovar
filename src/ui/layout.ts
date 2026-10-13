@@ -68,14 +68,39 @@ export function assign(l: Layout, items: { id: string; lang: string }[]) {
   for (const it of items) {
     if (!l.of[it.id] || !l.groups.some((g) => g.id === l.of[it.id])) {
       const gid = 'auto:' + it.lang;
-      if (!l.groups.some((g) => g.id === gid)) l.groups.push({ id: gid, name: LANG_NAMES[it.lang] ?? it.lang });
+      if (!l.groups.some((g) => g.id === gid)) insertAutoGroup(l, { id: gid, name: LANG_NAMES[it.lang] ?? it.lang });
       l.of[it.id] = gid;
     }
     if (!have.has(it.id)) { l.order.push(it.id); have.add(it.id); }
   }
-  // группы автоматических языков идут в привычном порядке; свои — после них
-  const rank = (g: Group) => { const i = LANG_ORDER.indexOf(g.id.replace('auto:', '')); return g.id.startsWith('auto:') && i >= 0 ? i : 100; };
-  l.groups.sort((a, b) => rank(a) - rank(b));
+}
+
+const autoRank = (id: string) => { const i = LANG_ORDER.indexOf(id.replace('auto:', '')); return i >= 0 ? i : 100; };
+/** Новая группа языка встаёт на привычное место среди автоматических; порядок, который расставил пользователь, не трогаем. */
+function insertAutoGroup(l: Layout, g: Group) {
+  const r = autoRank(g.id);
+  let after = -1;
+  l.groups.forEach((x, i) => { if (x.id.startsWith('auto:') && autoRank(x.id) <= r) after = i; });
+  if (after >= 0) { l.groups.splice(after + 1, 0, g); return; }
+  const firstBigger = l.groups.findIndex((x) => x.id.startsWith('auto:') && autoRank(x.id) > r);
+  if (firstBigger >= 0) l.groups.splice(firstBigger, 0, g); else l.groups.push(g);
+}
+
+/** Переносит группу `id` перед группой `target` (или после неё, если after). */
+export function moveGroup(l: Layout, id: string, target: string, after: boolean) {
+  if (id === target) return;
+  const g = l.groups.find((x) => x.id === id);
+  if (!g || !l.groups.some((x) => x.id === target)) return;
+  l.groups = l.groups.filter((x) => x.id !== id);
+  const at = l.groups.findIndex((x) => x.id === target);
+  l.groups.splice(after ? at + 1 : at, 0, g);
+}
+
+/** Сдвигает группу на соседнее место среди показанных групп (`visible` — их id по порядку). */
+export function shiftGroup(l: Layout, id: string, delta: -1 | 1, visible: string[]) {
+  const i = visible.indexOf(id);
+  const neighbour = visible[i + delta];
+  if (i >= 0 && neighbour) moveGroup(l, id, neighbour, delta > 0);
 }
 
 /** Переносит словарь `id` в группу `gid` перед словарём `before` (или в конец группы). */
