@@ -12,6 +12,7 @@ import {
 import { assign, guessLang, loadLayout, move, newGroupId, saveLayout } from './ui/layout';
 import ART_CSS from './ui/article.css?inline';
 import { buildSearchRegex, parseTerms } from './core/fold';
+import { groupDuplicates } from './core/dups';
 import { adaptColors, esc, prepare } from './ui/render';
 import { Resources } from './ui/resources';
 
@@ -864,30 +865,16 @@ $('#dictlist').addEventListener('keydown', (e) => {
 $('#dictlist').addEventListener('focusout', (e) => { if ((e.target as HTMLElement).matches('.rename')) commitRename(true); });
 
 /* ---------- дубли и скрытые словари ---------- */
-const normName = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
 const saveHidden = () => store.set('dhidden', JSON.stringify(hidden));
 interface DupMember { i: number; id: string; name: string; fmt: string; count: number; mb: number; folder: string }
-/** Группы словарей, похожих на один и тот же словарь: одинаковое название или одинаковое число заголовков. */
+/** Группы словарей, похожих на один и тот же словарь (правила в core/dups.ts); отмеченные «не дубли» пропускаются. */
 function findDupGroups(): DupMember[][] {
   const m: DupMember[] = [];
   sources.forEach((src, i) => {
     const st = status[i];
     if (st?.s === 'ready') m.push({ i, id: src.id, name: origName(i), fmt: FMT[src.format] ?? src.format, count: st.count, mb: src.main.size / 1048576, folder: src.folder });
   });
-  const parent = m.map((_, k) => k);
-  const find = (k: number): number => (parent[k] === k ? k : (parent[k] = find(parent[k])));
-  const seen = new Map<string, number>();
-  m.forEach((x, k) => {
-    for (const key of [`n:${normName(x.name)}`, x.count >= 500 ? `c:${x.count}` : '']) {
-      if (!key) continue;
-      const prev = seen.get(key);
-      if (prev === undefined) seen.set(key, k); else parent[find(k)] = find(prev);
-    }
-  });
-  const groups = new Map<number, DupMember[]>();
-  m.forEach((x, k) => { const r = find(k); (groups.get(r) ?? groups.set(r, []).get(r)!).push(x); });
-  return [...groups.values()]
-    .filter((g) => g.length > 1 && !notDup.has(g.map((x) => x.id).sort().join('|')));
+  return groupDuplicates(m).filter((g) => !notDup.has(g.map((x) => x.id).sort().join('|')));
 }
 const FMT_PREF: Record<string, number> = { MDict: 0, StarDict: 1, Slob: 2, DSL: 3 }; // какой вариант оставлять по умолчанию (компактнее и с ресурсами)
 
