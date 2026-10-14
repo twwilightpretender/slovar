@@ -231,7 +231,9 @@ function renderSug(): Promise<void> {
   pending = doSug();
   return pending;
 }
+let sugExact = false; // последний поиск нашёл слово как есть (а не «возможно, вы имели в виду»)
 async function doSug() {
+  sugExact = false;
   if (textMode) { cur = []; sel = -1; sug.classList.remove('open'); return; }
   const v = q.value.trim();
   if (!v || !ready) { cur = []; sel = -1; sug.classList.remove('open'); return; }
@@ -246,6 +248,7 @@ async function doSug() {
     return;
   }
   const exact = !r.fuzzy || cur.some((i) => i.k === key(v));
+  sugExact = exact;
   sug.innerHTML =
     (r.fuzzy && !exact ? '<div class="hint">Возможно, вы имели в виду:</div>' : '') +
     cur.map((e, i) => `<div class="row${i === sel ? ' sel' : ''}" data-i="${i}"><span>${e.form ? `${esc(e.h)} <span class="via">← ${esc(e.form)}</span>` : r.fuzzy && !exact ? esc(e.h) : hl(e.h, v)}</span><span class="dots">${dots(e.dicts)}</span></div>`).join('');
@@ -786,6 +789,26 @@ q.addEventListener('keydown', (e) => {
 });
 document.addEventListener('keydown', (e) => {
   if (e.key === '/' && document.activeElement !== q && !q.disabled) { e.preventDefault(); q.focus(); q.select(); }
+});
+/* вставка слова (Ctrl+V) сразу открывает статью: ни щелчка в строку поиска, ни Enter не нужно.
+   Открываем, только если слово найдено как есть: догадку «возможно, вы имели в виду» молча не открываем. Длинный текст и несколько строк — это не слово, они просто попадают в строку. */
+function openPasted(text: string) {
+  const v = text.trim();
+  if (!v || v.length > 60 || /[\r\n]/.test(v) || textMode || !ready) return;
+  pending.then(() => { if (q.value.trim() === v && sugExact && cur[0]) void show(cur[0].h); });
+}
+q.addEventListener('paste', () => setTimeout(() => openPasted(q.value), 0)); // к этому времени сработал input и запущен поиск
+document.addEventListener('paste', (e) => { // вставка, когда курсор не в строке поиска
+  const a = document.activeElement as HTMLElement | null;
+  if (q.disabled || a === q || document.querySelector('dialog[open]')) return;
+  if (a && (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.isContentEditable)) return;
+  const t = e.clipboardData?.getData('text') ?? '';
+  if (!t.trim()) return;
+  e.preventDefault();
+  if (!touchUI) focusSearch(); // сначала фокус (его обработчик запускает поиск), потом текст
+  q.value = t.trim();
+  void renderSug();
+  openPasted(q.value);
 });
 /* курсор сам возвращается в строку поиска: не надо листать наверх */
 const focusSearch = () => { if (!q.disabled && document.activeElement !== q) q.focus({ preventScroll: true }); };
